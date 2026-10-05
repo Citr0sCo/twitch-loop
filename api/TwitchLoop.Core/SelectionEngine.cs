@@ -10,24 +10,15 @@ public sealed class SelectionEngine
         IReadOnlyList<string> scheduledChannels,
         IReadOnlyList<Candidate> scheduledCandidates,
         IReadOnlyList<Candidate> followingCandidates,
-        IReadOnlyList<Candidate> discoveryCandidates,
-        string? excludedChannel,
-        bool discoveryEnabled)
+        string? excludedChannel)
     {
         var scheduledUnknown = false;
         foreach (var login in scheduledChannels.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (string.Equals(login, ScheduleChannels.AnyFollowing, StringComparison.OrdinalIgnoreCase))
+            if (ScheduleChannels.IsAutomaticFallback(login))
             {
                 var following = Live(followingCandidates, excludedChannel);
                 if (following.Count > 0) return new SelectionResult(following[random.Next(following.Count)].Login, SelectionTier.Personal, "any_following_live");
-                continue;
-            }
-
-            if (string.Equals(login, ScheduleChannels.Any, StringComparison.OrdinalIgnoreCase))
-            {
-                var discovery = Live(discoveryCandidates, excludedChannel);
-                if (discovery.Count > 0) return new SelectionResult(discovery[random.Next(discovery.Count)].Login, SelectionTier.Discovery, "any_live");
                 continue;
             }
 
@@ -53,15 +44,6 @@ public sealed class SelectionEngine
         if (personal.Count > 0)
         {
             return new SelectionResult(personal[random.Next(personal.Count)].Login, SelectionTier.Personal, "personal_channel_live");
-        }
-
-        if (discoveryEnabled)
-        {
-            var discovery = Live(discoveryCandidates, excludedChannel);
-            if (discovery.Count > 0)
-            {
-                return new SelectionResult(discovery[random.Next(discovery.Count)].Login, SelectionTier.Discovery, "discovery_channel_live");
-            }
         }
 
         return new SelectionResult(null, null, "no_live_candidate");

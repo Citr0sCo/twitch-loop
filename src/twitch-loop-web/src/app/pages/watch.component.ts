@@ -13,6 +13,7 @@ export class WatchComponent implements OnInit, OnDestroy {
   private readonly wakeLock = inject(WakeLockService);
   private pollSubscription: Subscription | null = null;
   private lastRevision = 0;
+  private playerMounted = false;
   session: SessionState | null = null;
   manualChannel = '';
   volume = 80;
@@ -27,14 +28,14 @@ export class WatchComponent implements OnInit, OnDestroy {
     if (existing) this.poll(existing);
   }
 
-  start(): void {
+  start(channel?: string): void {
     this.error = '';
-    this.api.startSession().subscribe({ next: session => { sessionStorage.setItem('twitch-loop-session', session.sessionId); this.apply(session); this.poll(session.sessionId); void this.wakeLock.request(); }, error: () => this.error = 'Could not start a playback session. Check the server connection.' });
+    this.api.startSession().subscribe({ next: session => { sessionStorage.setItem('twitch-loop-session', session.sessionId); this.apply(session); this.poll(session.sessionId); void this.wakeLock.request(); if (channel) this.requestChannel(session.sessionId, channel); }, error: () => this.error = 'Could not start a playback session. Check the server connection.' });
   }
 
   stop(): void {
     if (!this.session) return;
-    this.api.sessionAction(this.session.sessionId, 'stop').subscribe({ next: state => { this.apply(state); this.player.destroy(); void this.wakeLock.release(); } });
+    this.api.sessionAction(this.session.sessionId, 'stop').subscribe({ next: state => { this.apply(state); this.player.destroy(); this.playerMounted = false; void this.wakeLock.release(); } });
   }
 
   toggleAuto(): void {
@@ -44,17 +45,28 @@ export class WatchComponent implements OnInit, OnDestroy {
   }
 
   selectChannel(): void {
-    if (!this.session || !this.manualChannel.trim()) return;
-    this.api.sessionAction(this.session.sessionId, 'selectChannel', this.manualChannel).subscribe({ next: state => { this.apply(state); this.manualChannel = ''; } });
+    const channel = this.manualChannel.trim().replace(/^@/, '').toLowerCase();
+    if (!channel) return;
+    if (!/^[a-z0-9_]{1,25}$/.test(channel)) {
+      this.error = 'Enter a valid Twitch channel login.';
+      return;
+    }
+    this.error = '';
+    if (this.session && this.session.state !== 'stopped') this.requestChannel(this.session.sessionId, channel);
+    else this.start(channel);
   }
 
-  reset(): void { sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.lastRevision = 0; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.lastRevision = 0; this.playerMounted = false; this.player.destroy(); void this.wakeLock.release(); }
   setVolume(): void { this.player.setVolume(this.volume / 100); }
   toggleMute(): void { this.muted = !this.muted; this.player.setMuted(this.muted); }
   toggleTheatre(): void { this.theatre = !this.theatre; }
   nativeFullscreen(): void { void document.documentElement.requestFullscreen?.(); }
 
   ngOnDestroy(): void { this.pollSubscription?.unsubscribe(); this.player.destroy(); void this.wakeLock.release(); }
+
+  private requestChannel(sessionId: string, channel: string): void {
+    this.api.sessionAction(sessionId, 'selectChannel', channel).subscribe({ next: state => { this.apply(state); this.manualChannel = ''; this.error = ''; }, error: () => this.error = 'Could not switch to that Twitch channel.' });
+  }
 
   private poll(id: string): void {
     this.pollSubscription?.unsubscribe();
@@ -65,16 +77,16 @@ export class WatchComponent implements OnInit, OnDestroy {
     if (state.revision < this.lastRevision) return;
     const changed = state.channel !== this.session?.channel;
     this.lastRevision = state.revision; this.session = state;
-    if (state.channel && changed) {
-      if (this.lastRevision === state.revision && this.session?.channel === state.channel && !changed) return;
-      void this.mountOrSwitch(state.channel);
-    }
+    if (state.channel && changed) void this.mountOrSwitch(state.channel);
   }
 
   private async mountOrSwitch(channel: string): Promise<void> {
     try {
-      if (this.session?.channel === channel && this.lastRevision > 1) this.player.setChannel(channel);
-      else await this.player.mount('twitch-player', channel);
+      if (this.playerMounted) this.player.setChannel(channel);
+      else {
+        await this.player.mount('twitch-player', channel);
+        this.playerMounted = true;
+      }
       this.message = '';
     } catch { this.error = 'The official Twitch player could not be loaded. Check HTTPS, embed parents, and browser extensions.'; }
   }

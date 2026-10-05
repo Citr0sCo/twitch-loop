@@ -24,7 +24,7 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         if (sessions.Count == 0) return pollSeconds;
         var connection = await store.GetConnectionAsync(cancellationToken);
         if (connection is null || connection.ExpiresAt <= clock.UtcNow) return pollSeconds;
-        var timeZone = ResolveTimeZone(settings.TimeZone);
+        var timeZone = TwitchLoop.Core.ScheduleTimeZones.Resolve(Environment.GetEnvironmentVariable("APP_TIMEZONE"));
         var evaluated = new TwitchLoop.Core.ScheduleEvaluator().Evaluate(await store.GetScheduleAsync(cancellationToken), clock.UtcNow, timeZone);
         var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
         var followed = string.IsNullOrWhiteSpace(connection.TwitchUserId)
@@ -39,25 +39,15 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         TwitchLoop.Core.LiveStatus StatusFor(string login) => status.Complete ? (live.Contains(login) ? TwitchLoop.Core.LiveStatus.Live : TwitchLoop.Core.LiveStatus.Offline) : TwitchLoop.Core.LiveStatus.Unknown;
         var scheduledCandidates = scheduledLogins.Select(login => new TwitchLoop.Core.Candidate(login, login, StatusFor(login))).ToArray();
         var followingCandidates = followedLogins.Select(login => new TwitchLoop.Core.Candidate(login, login, StatusFor(login))).ToArray();
-        var discovery = await twitch.GetStreamsAsync([], accessToken, cancellationToken);
-        var discoveryCandidates = discovery.Complete
-            ? discovery.Data.Select(stream => new TwitchLoop.Core.Candidate(stream.Id, stream.UserLogin, TwitchLoop.Core.LiveStatus.Live)).ToArray()
-            : Array.Empty<TwitchLoop.Core.Candidate>();
         var engine = new TwitchLoop.Core.SelectionEngine(random);
         foreach (var session in sessions)
         {
             if (session.Channel is not null && status.Complete && live.Contains(session.Channel)) continue;
-            var decision = engine.Select(evaluated.Channels, scheduledCandidates, followingCandidates, discoveryCandidates, session.Channel, settings.RandomDiscoveryEnabled);
+            var decision = engine.Select(evaluated.Channels, scheduledCandidates, followingCandidates, session.Channel);
             await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken);
             logger.LogDebug("Evaluated session {SessionId}: {Reason}", session.Id, decision.Reason);
         }
         return pollSeconds;
     }
 
-    private static TimeZoneInfo ResolveTimeZone(string id)
-    {
-        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
-        catch (TimeZoneNotFoundException) { return TimeZoneInfo.Utc; }
-        catch (InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
-    }
 }

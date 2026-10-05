@@ -44,27 +44,22 @@ public sealed class SqliteStoreTests
     }
 
     [Test]
-    public async Task AppTimeZoneOverridesLondonDefault()
+    public async Task AppTimeZoneRemainsEnvironmentConfigurationRatherThanAnAppSetting()
     {
         var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
-            var defaultConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["App:DataDirectory"] = directory
-            }).Build();
-            var defaultStore = new SqliteStore(defaultConfiguration);
-            await defaultStore.InitializeAsync();
-            Assert.That((await defaultStore.GetSettingsAsync(CancellationToken.None)).TimeZone, Is.EqualTo("Europe/London"));
-
-            var overrideConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["App:DataDirectory"] = directory,
                 ["APP_TIMEZONE"] = "America/Toronto"
             }).Build();
-            var overrideStore = new SqliteStore(overrideConfiguration);
-            Assert.That((await overrideStore.GetSettingsAsync(CancellationToken.None)).TimeZone, Is.EqualTo("America/Toronto"));
+            var store = new SqliteStore(configuration);
+            await store.InitializeAsync();
+            var settings = await store.GetSettingsAsync(CancellationToken.None);
+
+            Assert.That(settings.GetType().GetProperty("TimeZone"), Is.Null);
         }
         finally
         {

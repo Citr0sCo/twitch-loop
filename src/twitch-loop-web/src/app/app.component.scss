@@ -3,6 +3,6 @@
 .brand-logo, .profile-image { border-radius: .4rem; display: inline-flex; height: 2rem; width: 2rem; }
 .profile-image { object-fit: cover; }
 nav { align-items: center; display: flex; gap: 1rem; } nav a { color: #b8b8bd; text-decoration: none; } nav a.active, nav a:hover { color: #fff; }
-.logout { background: transparent; border: 1px solid #55555d; border-radius: .35rem; color: #d4d4d8; cursor: pointer; padding: .45rem .7rem; } .logout:hover { border-color: #9146ff; color: #fff; }
+
 .logout-error { color: #f39aac; margin: .75rem clamp(1rem, 4vw, 3rem) 0; text-align: right; }
 main { margin: 0 auto; max-width: 1180px; padding: clamp(1rem, 4vw, 3rem); }

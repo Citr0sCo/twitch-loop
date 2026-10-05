@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService, FollowingChannel, ScheduleResponse, ScheduleSlot, Settings } from '../core/api.service';
 
 const ANY_FOLLOWING = 'any-following';
-const ANY = 'any';
+const LEGACY_ANY = 'any';
 
 interface EditableSlot extends ScheduleSlot { selectedLogin: string; }
 
@@ -13,14 +13,11 @@ export class SettingsComponent implements OnInit {
   private readonly api = inject(ApiService);
   settings: Settings = {
     version: 1,
-    timeZone: 'Europe/London',
-    channelPoolMode: 'paidSubscriptions',
     keepAwake: true,
     autoMaximiseStream: true,
     maximiseMode: 'theatre',
     twitchPollSeconds: 60,
     browserPollSeconds: 15,
-    randomDiscoveryEnabled: true,
     sessionDurationHours: 24,
     source: 'database'
   };
@@ -30,13 +27,14 @@ export class SettingsComponent implements OnInit {
   scheduleLoaded = false;
   settingsError = '';
   scheduleError = '';
-  schedule: ScheduleResponse = { version: 1, timeZone: 'Europe/London', slots: [] };
+  schedule: ScheduleResponse = { version: 1, slots: [] };
   editableSlots: EditableSlot[] = [];
   following: FollowingChannel[] = [];
   message = '';
   error = '';
 
-  get canSave(): boolean { return this.settingsLoaded && this.scheduleLoaded; }
+  get canSaveSettings(): boolean { return this.settingsLoaded && !this.settingsLoading; }
+  get canSaveSchedule(): boolean { return this.scheduleLoaded && !this.scheduleLoading; }
 
   ngOnInit(): void {
     this.loadSettings();
@@ -97,14 +95,14 @@ export class SettingsComponent implements OnInit {
     const normalized = login.trim().toLowerCase();
     if (!normalized) return;
     const channels = this.explicitChannels(slot);
-    if (!channels.some(channel => channel.toLowerCase() === normalized)) slot.channels = [...channels, ANY_FOLLOWING, ANY];
+    if (!channels.some(channel => channel.toLowerCase() === normalized)) slot.channels = [...channels, ANY_FOLLOWING];
     slot.selectedLogin = '';
   }
 
   removeChannel(slot: EditableSlot, index: number): void {
     const channels = this.explicitChannels(slot);
     channels.splice(index, 1);
-    slot.channels = [...channels, ANY_FOLLOWING, ANY];
+    slot.channels = [...channels, ANY_FOLLOWING];
   }
 
   moveChannel(slot: EditableSlot, index: number, direction: -1 | 1): void {
@@ -112,24 +110,30 @@ export class SettingsComponent implements OnInit {
     const next = index + direction;
     if (next < 0 || next >= channels.length) return;
     [channels[index], channels[next]] = [channels[next], channels[index]];
-    slot.channels = [...channels, ANY_FOLLOWING, ANY];
+    slot.channels = [...channels, ANY_FOLLOWING];
   }
 
   explicitChannels(slot: ScheduleSlot): string[] { return slot.channels.filter(channel => !this.isAutomatic(channel)); }
   channelName(login: string): string { return this.following.find(channel => channel.login.toLowerCase() === login.toLowerCase())?.name ?? login; }
-  isAutomatic(channel: string): boolean { return channel === ANY_FOLLOWING || channel === ANY; }
-  automaticLabel(channel: string): string { return channel === ANY_FOLLOWING ? 'Any following · random live followed channel' : 'Any · random live Twitch channel'; }
+  isAutomatic(channel: string): boolean { return channel === ANY_FOLLOWING || channel === LEGACY_ANY; }
+  automaticLabel(channel: string): string { return channel === ANY_FOLLOWING ? 'Any following · random live followed channel' : ''; }
 
-  save(): void {
-    if (!this.canSave) return;
+  saveSettings(): void {
+    if (!this.canSaveSettings) return;
     this.error = ''; this.message = '';
-    const slots: ScheduleSlot[] = this.editableSlots.map(slot => ({ id: slot.id, enabled: slot.enabled, startTime: slot.startTime, channels: [...this.explicitChannels(slot), ANY_FOLLOWING, ANY] }));
-    this.api.saveSettings(this.settings).subscribe({ next: settings => { this.settings = settings; this.saveSchedule(slots); }, error: () => this.error = 'Settings were changed elsewhere or are invalid.' });
+    this.api.saveSettings(this.settings).subscribe({ next: settings => { this.settings = settings; this.message = 'Playback settings saved.'; }, error: () => this.error = 'Settings were changed elsewhere or are invalid.' });
   }
 
-  private editableSlot(slot: ScheduleSlot): EditableSlot { return { ...slot, channels: [...slot.channels.filter(channel => !this.isAutomatic(channel)), ANY_FOLLOWING, ANY], selectedLogin: '' }; }
+  saveSchedule(): void {
+    if (!this.canSaveSchedule) return;
+    this.error = ''; this.message = '';
+    const slots = this.editableSlots.map(slot => ({ id: slot.id, enabled: slot.enabled, startTime: slot.startTime, channels: [...this.explicitChannels(slot), ANY_FOLLOWING] }));
+    this.persistSchedule(slots);
+  }
 
-  private saveSchedule(slots: ScheduleSlot[]): void {
-    this.api.saveSchedule({ ...this.schedule, slots }).subscribe({ next: response => { this.schedule = response; this.editableSlots = response.slots.map(slot => this.editableSlot(slot)); this.message = 'Settings saved. Changes apply on the next evaluation.'; }, error: error => this.error = error?.error?.errors?.join(' ') ?? 'Schedule is invalid.' });
+  private editableSlot(slot: ScheduleSlot): EditableSlot { return { ...slot, channels: [...slot.channels.filter(channel => !this.isAutomatic(channel)), ANY_FOLLOWING], selectedLogin: '' }; }
+
+  private persistSchedule(slots: ScheduleSlot[]): void {
+    this.api.saveSchedule({ ...this.schedule, slots }).subscribe({ next: response => { this.schedule = response; this.editableSlots = response.slots.map(slot => this.editableSlot(slot)); this.message = 'Schedule saved. Changes apply on the next evaluation.'; }, error: error => this.error = error?.error?.errors?.join(' ') ?? 'Schedule is invalid.' });
   }
 }
