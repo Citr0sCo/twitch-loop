@@ -31,7 +31,7 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri)) return Problem("Twitch OAuth is not configured.", statusCode: 503);
         var state = TokenStore.CreateState();
         Response.Cookies.Append("twitch_oauth_state", state, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Secure = Request.IsHttps, MaxAge = TimeSpan.FromMinutes(5) });
-        var url = "https://id.twitch.tv/oauth2/authorize?" + QueryString.Create(new Dictionary<string, string?>
+        var url = "https://id.twitch.tv/oauth2/authorize" + QueryString.Create(new Dictionary<string, string?>
         {
             ["client_id"] = clientId, ["redirect_uri"] = redirectUri, ["response_type"] = "code", ["scope"] = "user:read:follows user:read:subscriptions", ["state"] = state
         });
