@@ -1,0 +1,12 @@
+**/node_modules/
+**/dist/
+**/coverage/
+**/.angular/
+**/bin/
+**/obj/
+/data/
+.env
+*.user
+.openhands/
+twitch-night-app-spec.md
+.DS_Store

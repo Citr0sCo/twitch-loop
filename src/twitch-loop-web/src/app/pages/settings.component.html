@@ -1,0 +1,16 @@
+<section class="page-heading"><p class="eyebrow">Configuration</p><h1>Settings</h1><p>Settings edits are applied at the next handoff and never interrupt the current stream.</p></section>
+<div *ngIf="message" class="notice success" role="status">{{ message }}</div><div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
+<form *ngIf="settings" (ngSubmit)="save()">
+  <section class="panel"><h2>Playback</h2><div class="grid">
+    <label>Time zone<input name="timeZone" [(ngModel)]="settings.timeZone" placeholder="UTC"></label>
+    <label>Catalogue mode<select name="channelPoolMode" [(ngModel)]="settings.channelPoolMode"><option value="paidSubscriptions">Paid subscriptions</option><option value="followedChannels">Followed channels</option></select></label>
+    <label>Live polling seconds<input name="twitchPollSeconds" type="number" min="30" max="300" [(ngModel)]="settings.twitchPollSeconds"></label>
+    <label>Browser polling seconds<input name="browserPollSeconds" type="number" min="5" max="120" [(ngModel)]="settings.browserPollSeconds"></label>
+  </div><label class="check"><input name="keepAwake" type="checkbox" [(ngModel)]="settings.keepAwake"> Keep device awake while playing</label>
+  <label class="check"><input name="autoMaximiseStream" type="checkbox" [(ngModel)]="settings.autoMaximiseStream"> Auto-maximise stream</label>
+  <label>Maximise mode<select name="maximiseMode" [(ngModel)]="settings.maximiseMode"><option value="theatre">Theatre</option><option value="fullscreen">Native fullscreen when available</option></select></label></section>
+  <section class="panel"><div class="section-head"><div><h2>Daily schedule</h2><p>The last row before midnight remains active until the first row starts.</p></div><button class="secondary" type="button" (click)="addSlot()">Add time slot</button></div>
+    <div class="slot" *ngFor="let slot of editableSlots; let i = index"><label class="check"><input [name]="'enabled-' + slot.id" type="checkbox" [(ngModel)]="slot.enabled"> Enabled</label><label>Starts at<input [name]="'time-' + slot.id" type="time" [(ngModel)]="slot.startTime"></label><label class="channels">Ordered channels<input [name]="'channels-' + slot.id" [(ngModel)]="slot.channelsText" placeholder="channel_a, channel_b"><small>First live channel wins; add ordered fallbacks separated by commas.</small></label><div class="slot-actions"><button type="button" (click)="move(i, -1)" [disabled]="i === 0" aria-label="Move slot up">↑</button><button type="button" (click)="move(i, 1)" [disabled]="i === editableSlots.length - 1" aria-label="Move slot down">↓</button><button type="button" class="danger" (click)="removeSlot(i)">Delete</button></div></div>
+    <p *ngIf="editableSlots.length === 0" class="empty">Add at least one enabled slot before starting playback.</p>
+  </section><button class="primary" type="submit">Save settings</button>
+</form>

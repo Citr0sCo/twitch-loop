@@ -1,0 +1,5 @@
+.topbar { align-items: center; border-bottom: 1px solid #2a2a2e; display: flex; justify-content: space-between; padding: 1rem clamp(1rem, 4vw, 3rem); }
+.brand { align-items: center; color: #f2f2f2; display: flex; font-weight: 700; gap: .65rem; text-decoration: none; }
+.brand-mark { align-items: center; background: #9146ff; border-radius: .4rem; color: #0e0e10; display: inline-flex; font-size: .75rem; height: 2rem; justify-content: center; width: 2rem; }
+nav { display: flex; gap: 1rem; } nav a { color: #b8b8bd; text-decoration: none; } nav a.active, nav a:hover { color: #fff; }
+main { margin: 0 auto; max-width: 1180px; padding: clamp(1rem, 4vw, 3rem); } footer { color: #77777d; font-size: .85rem; padding: 2rem 1rem; text-align: center; }

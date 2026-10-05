@@ -1,0 +1,22 @@
+services:
+  twitch-loop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: twitch-loop:local
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - twitch-loop-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  twitch-loop-data:
