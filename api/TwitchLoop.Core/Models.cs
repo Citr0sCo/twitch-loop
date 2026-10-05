@@ -3,6 +3,26 @@ namespace TwitchLoop.Core;
 public enum LiveStatus { Unknown, Offline, Live }
 public enum SelectionTier { Scheduled, Personal, Discovery }
 
+public static class ScheduleChannels
+{
+    public const string AnyFollowing = "any-following";
+    public const string Any = "any";
+
+    public static IReadOnlyList<string> Normalize(IEnumerable<string> channels)
+    {
+        var result = channels.Select(channel => channel.Trim())
+            .Where(channel => channel.Length > 0 && !IsAutomaticFallback(channel))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        result.Add(AnyFollowing);
+        result.Add(Any);
+        return result;
+    }
+
+    public static bool IsAutomaticFallback(string channel) =>
+        string.Equals(channel, AnyFollowing, StringComparison.OrdinalIgnoreCase) || string.Equals(channel, Any, StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed record ScheduleSlot(string Id, bool Enabled, TimeOnly StartTime, IReadOnlyList<string> Channels);
 public sealed record EvaluatedSlot(string? SlotId, IReadOnlyList<string> Channels, DateOnly LocalDate);
 public sealed record Candidate(string Id, string Login, LiveStatus Status);

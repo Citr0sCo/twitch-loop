@@ -7,6 +7,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../api/TwitchLoop.Core/TwitchLoop.Core.csproj" />
+    <ProjectReference Include="../../api/TwitchLoop.Infrastructure/TwitchLoop.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="NUnit" Version="4.6.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

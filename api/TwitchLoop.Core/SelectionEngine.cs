@@ -8,7 +8,8 @@ public sealed class SelectionEngine
 
     public SelectionResult Select(
         IReadOnlyList<string> scheduledChannels,
-        IReadOnlyList<Candidate> personalCandidates,
+        IReadOnlyList<Candidate> scheduledCandidates,
+        IReadOnlyList<Candidate> followingCandidates,
         IReadOnlyList<Candidate> discoveryCandidates,
         string? excludedChannel,
         bool discoveryEnabled)
@@ -16,7 +17,21 @@ public sealed class SelectionEngine
         var scheduledUnknown = false;
         foreach (var login in scheduledChannels.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var candidate = Find(personalCandidates, discoveryCandidates, login);
+            if (string.Equals(login, ScheduleChannels.AnyFollowing, StringComparison.OrdinalIgnoreCase))
+            {
+                var following = Live(followingCandidates, excludedChannel);
+                if (following.Count > 0) return new SelectionResult(following[random.Next(following.Count)].Login, SelectionTier.Personal, "any_following_live");
+                continue;
+            }
+
+            if (string.Equals(login, ScheduleChannels.Any, StringComparison.OrdinalIgnoreCase))
+            {
+                var discovery = Live(discoveryCandidates, excludedChannel);
+                if (discovery.Count > 0) return new SelectionResult(discovery[random.Next(discovery.Count)].Login, SelectionTier.Discovery, "any_live");
+                continue;
+            }
+
+            var candidate = Find(scheduledCandidates, followingCandidates, login);
             if (candidate is null || candidate.Status == LiveStatus.Unknown)
             {
                 scheduledUnknown = true;
@@ -34,7 +49,7 @@ public sealed class SelectionEngine
             return new SelectionResult(null, null, "scheduled_channel_status_unknown");
         }
 
-        var personal = Live(personalCandidates, excludedChannel);
+        var personal = Live(followingCandidates, excludedChannel);
         if (personal.Count > 0)
         {
             return new SelectionResult(personal[random.Next(personal.Count)].Login, SelectionTier.Personal, "personal_channel_live");

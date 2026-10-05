@@ -22,7 +22,7 @@ public sealed class ScheduleController(SqliteStore store) : ControllerBase
         foreach (var item in request.Slots)
         {
             if (!TimeOnly.TryParseExact(item.StartTime, "HH:mm", out var time)) return BadRequest(new { error = "invalid_start_time", item.Id });
-            slots.Add(new ScheduleSlot(item.Id, item.Enabled, time, item.Channels.Select(channel => channel.Trim()).Where(channel => channel.Length > 0).ToArray()));
+            slots.Add(new ScheduleSlot(item.Id, item.Enabled, time, ScheduleChannels.Normalize(item.Channels)));
         }
         var errors = ScheduleValidation.Validate(slots);
         if (errors.Count > 0) return BadRequest(new { error = "invalid_schedule", errors });
