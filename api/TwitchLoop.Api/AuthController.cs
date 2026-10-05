@@ -11,23 +11,33 @@ namespace TwitchLoop.Api;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(IConfiguration configuration, IHttpClientFactory clients, TokenStore tokens, SqliteStore store) : ControllerBase
+public sealed class AuthController(IConfiguration configuration, IHttpClientFactory clients, TokenStore tokens, SqliteStore store, TwitchApiClient twitch) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("status")]
-    public async Task<IActionResult> Status(CancellationToken cancellationToken) => Ok(new
+    public async Task<IActionResult> Status(CancellationToken cancellationToken)
     {
-        setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
-        connected = User.Identity?.IsAuthenticated == true && await store.HasConnectionAsync(cancellationToken),
-        ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
-        profile = User.Identity?.IsAuthenticated == true ? new
+        var authenticated = User.Identity?.IsAuthenticated == true;
+        var connection = authenticated ? await store.GetConnectionAsync(cancellationToken) : null;
+        var identity = connection is null ? null : await twitch.GetCurrentUserAsync(tokens.Unprotect(connection.EncryptedAccessToken), cancellationToken);
+        if (identity is not null && !string.Equals(connection!.TwitchUserId, identity.Id, StringComparison.Ordinal))
         {
-            login = User.FindFirstValue("twitch_user_login"),
-            displayName = User.FindFirstValue("twitch_user_display_name"),
-            profileImageUrl = User.FindFirstValue("twitch_user_profile_image_url")
-        } : null,
-        scopes = new[] { "user:read:follows", "user:read:subscriptions" }
-    });
+            await store.SaveConnectionAsync(identity.Id, connection.EncryptedAccessToken, connection.EncryptedRefreshToken, connection.Scopes, connection.ExpiresAt, cancellationToken);
+        }
+        return Ok(new
+        {
+            setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
+            connected = authenticated && connection is not null,
+            ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
+            profile = authenticated ? new
+            {
+                login = identity?.Login ?? User.FindFirstValue("twitch_user_login"),
+                displayName = identity?.DisplayName ?? User.FindFirstValue("twitch_user_display_name"),
+                profileImageUrl = identity?.ProfileImageUrl ?? User.FindFirstValue("twitch_user_profile_image_url") ?? string.Empty
+            } : null,
+            scopes = new[] { "user:read:follows", "user:read:subscriptions" }
+        });
+    }
 
     [AllowAnonymous]
     [HttpGet("twitch/start")]

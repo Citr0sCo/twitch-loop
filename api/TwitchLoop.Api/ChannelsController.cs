@@ -16,8 +16,17 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
     public async Task<IActionResult> Following(CancellationToken cancellationToken)
     {
         var connection = await store.GetConnectionAsync(cancellationToken);
-        if (connection is null || string.IsNullOrWhiteSpace(connection.TwitchUserId)) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
-        var result = await twitch.GetFollowedChannelsAsync(connection.TwitchUserId, tokens.Unprotect(connection.EncryptedAccessToken), cancellationToken);
+        if (connection is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+        var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
+        var twitchUserId = connection.TwitchUserId;
+        if (string.IsNullOrWhiteSpace(twitchUserId))
+        {
+            var identity = await twitch.GetCurrentUserAsync(accessToken, cancellationToken);
+            if (identity is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+            twitchUserId = identity.Id;
+            await store.SaveConnectionAsync(identity.Id, connection.EncryptedAccessToken, connection.EncryptedRefreshToken, connection.Scopes, connection.ExpiresAt, cancellationToken);
+        }
+        var result = await twitch.GetFollowedChannelsAsync(twitchUserId, accessToken, cancellationToken);
         if (!result.Complete) return Problem("Twitch followed channels could not be loaded.", statusCode: StatusCodes.Status502BadGateway);
         return Ok(new
         {

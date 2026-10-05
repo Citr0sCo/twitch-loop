@@ -31,7 +31,7 @@ public sealed record SelectionResult(string? Channel, SelectionTier? Tier, strin
 public sealed class AppSettings
 {
     public int Version { get; set; } = 1;
-    public string TimeZone { get; set; } = "UTC";
+    public string TimeZone { get; set; } = "Europe/London";
     public string ChannelPoolMode { get; set; } = "paidSubscriptions";
     public bool KeepAwake { get; set; } = true;
     public bool AutoMaximiseStream { get; set; } = true;

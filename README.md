@@ -26,7 +26,7 @@ A self-hosted Twitch player with daily schedules and automatic live-channel fall
    docker compose -f docker-compose.yml up -d
    ```
 
-4. Open `http://localhost:8080/connect`. A secure public origin is required for production OAuth, Wake Lock and reliable embedded playback.
+4. Open `http://localhost:8080/connect`. The host port maps to the container's port 80. A secure public origin is required for production OAuth, Wake Lock and reliable embedded playback.
 
 The Compose file passes `.env` with `env_file`; defining values only for Compose interpolation does not inject them into the container. The `twitch-loop-data` volume contains the SQLite database and data-protection keys. Back up SQLite consistently with WAL enabled: stop the service before a simple volume copy, or use SQLite's backup API rather than copying only the main database file while it is live.
 
@@ -34,7 +34,7 @@ For a published-image deployment, copy `examples/docker-compose.yml` and use a m
 
 ## Configuration
 
-Settings are stored in SQLite and edited from the Settings page. Playback preferences, polling intervals, session duration, discovery behavior, and the daily schedule do not need to be supplied through `.env`. The environment file is reserved for hosting and Twitch OAuth configuration; see `.env.example` for the required variables.
+Settings are stored in SQLite and edited from the Settings page. Playback preferences, polling intervals, session duration, discovery behavior, and the daily schedule do not need to be supplied through `.env`. Set `APP_TIMEZONE` in `.env` to override the schedule time zone; it defaults to `Europe/London`. The environment file is otherwise reserved for hosting and Twitch OAuth configuration; see `.env.example` for the variables.
 
 `APP_ALLOWED_OWNER_TWITCH_LOGIN` configures the single Twitch login allowed to connect. The callback compares the authenticated Twitch login returned by Twitch case-insensitively and rejects other accounts. Twitch tokens never go to Angular or logs, and the OAuth callback uses a short-lived browser-bound state value.
 
