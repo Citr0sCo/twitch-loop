@@ -11,12 +11,14 @@ public sealed record StoredConnection(string? TwitchUserId, string EncryptedAcce
 public sealed class SqliteStore
 {
     private readonly string connectionString;
+    private readonly string? configuredTimeZone;
     private readonly SemaphoreSlim gate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public SqliteStore(IConfiguration configuration)
     {
         var directory = configuration["App:DataDirectory"] ?? "/data";
+        configuredTimeZone = configuration["APP_TIMEZONE"];
         Directory.CreateDirectory(directory);
         connectionString = new SqliteConnectionStringBuilder
         {
@@ -56,7 +58,9 @@ public sealed class SqliteStore
     public async Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken)
     {
         var stored = await ReadJsonAsync("SELECT json FROM settings WHERE id = 1", cancellationToken);
-        return stored is null ? new AppSettings() : JsonSerializer.Deserialize<AppSettings>(stored, JsonOptions) ?? new AppSettings();
+        var settings = stored is null ? new AppSettings() : JsonSerializer.Deserialize<AppSettings>(stored, JsonOptions) ?? new AppSettings();
+        if (!string.IsNullOrWhiteSpace(configuredTimeZone)) settings.TimeZone = configuredTimeZone;
+        return settings;
     }
 
     public async Task<AppSettings> SaveSettingsAsync(AppSettings settings, int expectedVersion, CancellationToken cancellationToken)
