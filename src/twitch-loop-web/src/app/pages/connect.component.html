@@ -1,0 +1,10 @@
+<section class="connect-card" aria-labelledby="connect-title">
+  <p class="eyebrow">Self-hosted Twitch player</p>
+  <h1 id="connect-title">Keep watching what matters.</h1>
+  <p class="lede">Configure a daily viewing schedule, then let Twitch Loop move through live fallbacks when a stream ends.</p>
+  <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
+  <div *ngIf="status?.setupRequired" class="notice" role="status"><strong>Setup required.</strong> Add the Twitch client ID, client secret, and exact callback URL to the server environment before connecting.</div>
+  <button class="primary" type="button" (click)="connect()" [disabled]="status?.setupRequired || !status">Connect with Twitch</button>
+  <p class="fine-print">Twitch Loop requests follows and subscription verification scopes only. Twitch access tokens stay on the server.</p>
+  <a class="text-link" routerLink="/settings">Configure settings without signing in</a>
+</section>

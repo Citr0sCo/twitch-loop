@@ -1,0 +1,23 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+export interface AuthStatus { setupRequired: boolean; connected: boolean; ownerConfigured: boolean; scopes: string[]; }
+export interface Settings { version: number; timeZone: string; channelPoolMode: string; keepAwake: boolean; autoMaximiseStream: boolean; maximiseMode: string; twitchPollSeconds: number; browserPollSeconds: number; randomDiscoveryEnabled: boolean; sessionDurationHours: number; source: string; }
+export interface ScheduleSlot { id: string; enabled: boolean; startTime: string; channels: string[]; }
+export interface ScheduleResponse { version: number; timeZone: string; slots: ScheduleSlot[]; }
+export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; activeSlotId: string | null; nextSlotTime: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
+
+@Injectable({ providedIn: 'root' })
+export class ApiService {
+  private readonly http = inject(HttpClient);
+  authStatus(): Observable<AuthStatus> { return this.http.get<AuthStatus>('/api/auth/status'); }
+  settings(): Observable<Settings> { return this.http.get<Settings>('/api/settings'); }
+  saveSettings(settings: Settings): Observable<Settings> { return this.http.put<Settings>('/api/settings', settings, { headers: new HttpHeaders({ 'If-Match': String(settings.version) }) }); }
+  schedule(): Observable<ScheduleResponse> { return this.http.get<ScheduleResponse>('/api/schedule'); }
+  saveSchedule(schedule: ScheduleResponse): Observable<ScheduleResponse> { return this.http.put<ScheduleResponse>('/api/schedule', schedule); }
+  startSession(): Observable<SessionState> { return this.http.post<SessionState>('/api/sessions', {}); }
+  currentSession(id: string): Observable<SessionState> { return this.http.get<SessionState>(`/api/sessions/${encodeURIComponent(id)}/current-stream`); }
+  sessionAction(id: string, name: string, channel?: string): Observable<SessionState> { return this.http.post<SessionState>(`/api/sessions/${encodeURIComponent(id)}/actions`, { name, channel }); }
+  refreshHint(id: string): Observable<unknown> { return this.http.post(`/api/sessions/${encodeURIComponent(id)}/refresh-hint`, {}); }
+}

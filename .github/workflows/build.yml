@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-fe:
+    runs-on: self-hosted
+    container: { image: node:22 }
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache npm
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('src/twitch-loop-web/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+      - name: Install dependencies
+        working-directory: src/twitch-loop-web
+        run: npm ci --prefer-offline
+      - name: Build frontend
+        working-directory: src/twitch-loop-web
+        run: npm run build
+
+  test-fe:
+    runs-on: self-hosted
+    container: { image: node:22 }
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        working-directory: src/twitch-loop-web
+        run: npm ci --prefer-offline
+      - name: Install Chromium
+        run: apt-get update && apt-get install --yes --no-install-recommends chromium
+      - name: Test frontend
+        working-directory: src/twitch-loop-web
+        run: npm run test-ci
+
+  lint-fe:
+    runs-on: self-hosted
+    container: { image: node:22 }
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        working-directory: src/twitch-loop-web
+        run: npm ci --prefer-offline
+      - name: Lint frontend
+        working-directory: src/twitch-loop-web
+        run: npm run lint
+
+  build-be:
+    runs-on: self-hosted
+    container: { image: mcr.microsoft.com/dotnet/sdk:10.0 }
+    steps:
+      - uses: actions/checkout@v5
+      - run: dotnet restore api/TwitchLoop.sln
+      - run: dotnet build api/TwitchLoop.sln --no-restore --configuration Release
+
+  test-be:
+    runs-on: self-hosted
+    container: { image: mcr.microsoft.com/dotnet/sdk:10.0 }
+    steps:
+      - uses: actions/checkout@v5
+      - run: dotnet restore api/TwitchLoop.sln
+      - run: dotnet test api/TwitchLoop.sln --no-restore --configuration Release
+
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t twitch-loop .
