@@ -26,7 +26,7 @@ A self-hosted Twitch player with daily schedules and automatic live-channel fall
    docker compose -f docker-compose.yml up -d
    ```
 
-4. Open `http://localhost:8080/connect`. A secure public origin is required for production OAuth, Wake Lock and reliable embedded playback.
+4. Open `http://localhost:8080/connect`. The container listens on port 8080 as a non-root user. A secure public origin is required for production OAuth, Wake Lock and reliable embedded playback.
 
 The Compose file passes `.env` with `env_file`; defining values only for Compose interpolation does not inject them into the container. The `twitch-loop-data` volume contains the SQLite database and data-protection keys. Back up SQLite consistently with WAL enabled: stop the service before a simple volume copy, or use SQLite's backup API rather than copying only the main database file while it is live.
 

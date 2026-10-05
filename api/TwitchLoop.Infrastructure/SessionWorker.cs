@@ -7,21 +7,23 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            try { await EvaluateAsync(stoppingToken); }
+            var delaySeconds = 60;
+            try { delaySeconds = await EvaluateAsync(stoppingToken); }
             catch (Exception exception) when (exception is not OperationCanceledException) { logger.LogError(exception, "Session evaluation tick failed"); }
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
         }
     }
 
-    private async Task EvaluateAsync(CancellationToken cancellationToken)
+    private async Task<int> EvaluateAsync(CancellationToken cancellationToken)
     {
-        var sessions = await store.GetActiveSessionsAsync(clock.UtcNow, cancellationToken);
-        if (sessions.Count == 0) return;
         var settings = await store.GetSettingsAsync(cancellationToken);
+        var pollSeconds = Math.Clamp(settings.TwitchPollSeconds, 30, 300);
+        var sessions = await store.GetActiveSessionsAsync(clock.UtcNow, cancellationToken);
+        if (sessions.Count == 0) return pollSeconds;
         var connection = await store.GetConnectionAsync(cancellationToken);
-        if (connection is null || connection.ExpiresAt <= clock.UtcNow) return;
+        if (connection is null || connection.ExpiresAt <= clock.UtcNow) return pollSeconds;
         var timeZone = ResolveTimeZone(settings.TimeZone);
         var evaluated = new TwitchLoop.Core.ScheduleEvaluator().Evaluate(await store.GetScheduleAsync(cancellationToken), clock.UtcNow, timeZone);
         var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
@@ -49,6 +51,7 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
             await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken);
             logger.LogDebug("Evaluated session {SessionId}: {Reason}", session.Id, decision.Reason);
         }
+        return pollSeconds;
     }
 
     private static TimeZoneInfo ResolveTimeZone(string id)

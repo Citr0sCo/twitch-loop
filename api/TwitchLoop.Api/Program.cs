@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
 using TwitchLoop.Infrastructure;
 
@@ -18,6 +19,14 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization();
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = "XSRF-TOKEN";
+    options.Cookie.HttpOnly = false;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.HeaderName = "X-XSRF-TOKEN";
+});
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -49,6 +58,16 @@ app.Use(async (context, next) =>
 });
 app.UseStaticFiles();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+    antiforgery.GetAndStoreTokens(context);
+    if (context.Request.Path.StartsWithSegments("/api") && (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method)))
+    {
+        await antiforgery.ValidateRequestAsync(context);
+    }
+    await next();
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

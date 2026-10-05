@@ -8,10 +8,32 @@ namespace TwitchLoop.Infrastructure;
 
 public sealed record TwitchStream(string Id, string UserId, string UserLogin, string UserName, DateTimeOffset StartedAt, string Language, string GameName);
 public sealed record TwitchFollow(string BroadcasterId, string BroadcasterLogin, string BroadcasterName, DateTimeOffset FollowedAt);
+public sealed record TwitchIdentity(string Id, string Login, string DisplayName, string ProfileImageUrl);
 public sealed record TwitchApiResult<T>(IReadOnlyList<T> Data, bool Complete, string? Error = null);
 
 public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration configuration, ILogger<TwitchApiClient> logger)
 {
+    public async Task<TwitchIdentity?> GetCurrentUserAsync(string? accessToken, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"])) return null;
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.twitch.tv/helix/users");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("Client-Id", configuration["TWITCH_CLIENT_ID"]);
+        try
+        {
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            var payload = await response.Content.ReadFromJsonAsync<UsersResponse>(cancellationToken: cancellationToken);
+            var user = payload?.Data.FirstOrDefault();
+            return user is null ? null : new TwitchIdentity(user.Id, user.Login, user.DisplayName, user.ProfileImageUrl);
+        }
+        catch (HttpRequestException exception)
+        {
+            logger.LogWarning(exception, "Twitch identity request failed");
+            return null;
+        }
+    }
+
     public async Task<TwitchApiResult<TwitchStream>> GetStreamsAsync(IEnumerable<string> userLogins, string? accessToken, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(accessToken)) return new([], false, "not_connected");
@@ -88,5 +110,11 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
         [property: JsonPropertyName("data")] List<TwitchFollow> Data,
         [property: JsonPropertyName("pagination")] Dictionary<string, string>? Pagination);
 
+    private sealed record UsersResponse([property: JsonPropertyName("data")] List<TwitchUser> Data);
+    private sealed record TwitchUser(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("login")] string Login,
+        [property: JsonPropertyName("display_name")] string DisplayName,
+        [property: JsonPropertyName("profile_image_url")] string ProfileImageUrl);
     private sealed record StreamsResponse([property: JsonPropertyName("data")] List<TwitchStream> Data);
 }
