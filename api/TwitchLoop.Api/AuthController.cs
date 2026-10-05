@@ -63,8 +63,8 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         var userPayload = await userResponse.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: cancellationToken);
         var user = userPayload?.Data?.FirstOrDefault();
         if (user is null) return Problem("Twitch identity validation failed.", statusCode: 502);
-        var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_ID"];
-        if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Id, StringComparison.Ordinal)) return Forbid();
+        var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_ID"]?.Trim();
+        if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Id, StringComparison.Ordinal)) return Redirect("/connect?error=owner_mismatch");
         await store.SaveConnectionAsync(user.Id, tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("twitch_user_id", user.Id)], CookieAuthenticationDefaults.AuthenticationScheme)));
         return Redirect("/watch?connected=1");
