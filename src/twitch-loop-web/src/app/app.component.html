@@ -4,7 +4,7 @@
       <img class="profile-image" [src]="profile.profileImageUrl" [alt]="profile.displayName || profile.login || 'Twitch profile'">
       <span>{{ profile.displayName || profile.login }}</span>
     </ng-container>
-    <ng-template #anonymousBrand><span class="brand-mark">TL</span><span>Twitch Loop</span></ng-template>
+    <ng-template #anonymousBrand><img class="brand-logo" src="/favicon.svg" alt=""><span>Twitch Loop</span></ng-template>
   </a>
   <nav *ngIf="status?.connected" aria-label="Primary navigation">
     <a routerLink="/watch" routerLinkActive="active">Watch</a>

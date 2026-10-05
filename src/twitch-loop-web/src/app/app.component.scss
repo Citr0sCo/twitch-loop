@@ -1,7 +1,6 @@
 .topbar { align-items: center; border-bottom: 1px solid #2a2a2e; display: flex; justify-content: space-between; padding: 1rem clamp(1rem, 4vw, 3rem); }
 .brand { align-items: center; color: #f2f2f2; display: flex; font-weight: 700; gap: .65rem; text-decoration: none; }
-.brand-mark, .profile-image { align-items: center; border-radius: 50%; display: inline-flex; height: 2rem; justify-content: center; width: 2rem; }
-.brand-mark { background: #9146ff; border-radius: .4rem; color: #0e0e10; font-size: .75rem; }
+.brand-logo, .profile-image { border-radius: .4rem; display: inline-flex; height: 2rem; width: 2rem; }
 .profile-image { object-fit: cover; }
 nav { align-items: center; display: flex; gap: 1rem; } nav a { color: #b8b8bd; text-decoration: none; } nav a.active, nav a:hover { color: #fff; }
 .logout { background: transparent; border: 1px solid #55555d; border-radius: .35rem; color: #d4d4d8; cursor: pointer; padding: .45rem .7rem; } .logout:hover { border-color: #9146ff; color: #fff; }
