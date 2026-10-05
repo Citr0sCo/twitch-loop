@@ -9,6 +9,6 @@ describe('AppComponent', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Twitch Loop');
-    expect(fixture.nativeElement.textContent).toContain('Daily schedules');
+    expect(fixture.nativeElement.textContent).not.toContain('Daily schedules');
   });
 });
