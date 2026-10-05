@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TwitchLoop.Core;
 using TwitchLoop.Infrastructure;
@@ -7,6 +8,7 @@ namespace TwitchLoop.Api;
 public sealed record ScheduleSlotRequest(string Id, bool Enabled, string StartTime, IReadOnlyList<string> Channels);
 
 [ApiController]
+[Authorize]
 [Route("api/schedule")]
 public sealed class ScheduleController(SqliteStore store) : ControllerBase
 {

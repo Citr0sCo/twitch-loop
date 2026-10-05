@@ -1,9 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { ApiService, AuthStatus } from '../core/api.service';
 
-@Component({ selector: 'tl-connect', standalone: true, imports: [CommonModule, RouterLink], templateUrl: './connect.component.html', styleUrl: './connect.component.scss' })
+@Component({ selector: 'tl-connect', standalone: true, imports: [CommonModule], templateUrl: './connect.component.html', styleUrl: './connect.component.scss' })
 export class ConnectComponent implements OnInit {
   private readonly api = inject(ApiService);
   status: AuthStatus | null = null;

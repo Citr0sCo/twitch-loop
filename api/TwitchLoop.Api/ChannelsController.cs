@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TwitchLoop.Infrastructure;
 
 namespace TwitchLoop.Api;
 
 [ApiController]
+[Authorize]
 [Route("api/channels")]
 public sealed class ChannelsController(TwitchApiClient twitch) : ControllerBase
 {
