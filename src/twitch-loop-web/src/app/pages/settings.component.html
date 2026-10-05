@@ -1,6 +1,12 @@
 <section class="page-heading"><p class="eyebrow">Configuration</p><h1>Settings</h1><p>Set the times Twitch Loop should switch and the ordered followed channels it should try.</p></section>
 <div *ngIf="message" class="notice success" role="status">{{ message }}</div><div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
-<form *ngIf="settings; else loading" (ngSubmit)="save()">
+<div *ngIf="settingsLoading || scheduleLoading" class="notice" role="status">Loading settings and schedule…</div>
+<section *ngIf="settingsError || scheduleError" class="notice error" role="alert">
+  <p *ngIf="settingsError">{{ settingsError }} <button type="button" (click)="loadSettings()">Retry settings</button></p>
+  <p *ngIf="scheduleError">{{ scheduleError }} <button type="button" (click)="loadSchedule()">Retry schedule</button></p>
+</section>
+<form (ngSubmit)="save()">
+  <fieldset class="settings-fields" [disabled]="!canSave">
   <section class="panel"><h2>Playback</h2><div class="grid">
     <label>Time zone<input name="timeZone" [(ngModel)]="settings.timeZone" placeholder="UTC"></label>
     <label>Catalogue mode<select name="channelPoolMode" [(ngModel)]="settings.channelPoolMode"><option value="paidSubscriptions">Paid subscriptions</option><option value="followedChannels">Followed channels</option></select></label>
@@ -22,6 +28,6 @@
       <div class="slot-actions"><button type="button" (click)="moveSlot(i, -1)" [disabled]="i === 0" aria-label="Move trigger up">↑</button><button type="button" (click)="moveSlot(i, 1)" [disabled]="i === editableSlots.length - 1" aria-label="Move trigger down">↓</button><button type="button" class="danger" (click)="removeSlot(i)">Delete trigger</button></div>
     </div>
     <p *ngIf="editableSlots.length === 0" class="empty">Add at least one trigger time before starting playback.</p>
-  </section><button class="primary" type="submit">Save settings</button>
+  </section><button class="primary" type="submit" [disabled]="!canSave">Save settings</button>
+  </fieldset>
 </form>
-<ng-template #loading><section *ngIf="settingsLoading" class="panel"><p>Loading settings…</p></section></ng-template>

@@ -21,8 +21,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddAntiforgery(options =>
 {
-    options.Cookie.Name = "XSRF-TOKEN";
-    options.Cookie.HttpOnly = false;
+    options.Cookie.Name = "twitch_loop_antiforgery";
+    options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.HeaderName = "X-XSRF-TOKEN";
@@ -61,10 +61,30 @@ app.UseRouting();
 app.Use(async (context, next) =>
 {
     var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-    antiforgery.GetAndStoreTokens(context);
+    var tokens = antiforgery.GetAndStoreTokens(context);
+    if (tokens.RequestToken is not null)
+    {
+        context.Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken, new CookieOptions
+        {
+            HttpOnly = false,
+            SameSite = SameSiteMode.Lax,
+            Secure = context.Request.IsHttps,
+            IsEssential = true
+        });
+    }
+
     if (context.Request.Path.StartsWithSegments("/api") && (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method)))
     {
-        await antiforgery.ValidateRequestAsync(context);
+        try
+        {
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_antiforgery_token" });
+            return;
+        }
     }
     await next();
 });

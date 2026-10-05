@@ -9,6 +9,7 @@ describe('AppComponent', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Twitch Loop');
+    expect(fixture.nativeElement.querySelector('.brand-logo').getAttribute('src')).toBe('/favicon.svg');
     expect(fixture.nativeElement.textContent).not.toContain('Daily schedules');
   });
 

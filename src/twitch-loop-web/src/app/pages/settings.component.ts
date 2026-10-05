@@ -11,28 +11,82 @@ interface EditableSlot extends ScheduleSlot { selectedLogin: string; }
 @Component({ selector: 'tl-settings', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './settings.component.html', styleUrl: './settings.component.scss' })
 export class SettingsComponent implements OnInit {
   private readonly api = inject(ApiService);
-  settings: Settings | null = null;
+  settings: Settings = {
+    version: 1,
+    timeZone: 'Europe/London',
+    channelPoolMode: 'paidSubscriptions',
+    keepAwake: true,
+    autoMaximiseStream: true,
+    maximiseMode: 'theatre',
+    twitchPollSeconds: 60,
+    browserPollSeconds: 15,
+    randomDiscoveryEnabled: true,
+    sessionDurationHours: 24,
+    source: 'database'
+  };
   settingsLoading = true;
-  schedule: ScheduleResponse = { version: 1, timeZone: 'UTC', slots: [] };
+  scheduleLoading = true;
+  settingsLoaded = false;
+  scheduleLoaded = false;
+  settingsError = '';
+  scheduleError = '';
+  schedule: ScheduleResponse = { version: 1, timeZone: 'Europe/London', slots: [] };
   editableSlots: EditableSlot[] = [];
   following: FollowingChannel[] = [];
   message = '';
   error = '';
 
+  get canSave(): boolean { return this.settingsLoaded && this.scheduleLoaded; }
+
   ngOnInit(): void {
+    this.loadSettings();
+    this.loadSchedule();
+    this.api.following().subscribe({ next: response => this.following = response.data, error: error => this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.' });
+  }
+
+  loadSettings(): void {
+    this.settingsLoading = true;
+    this.settingsError = '';
     this.api.settings().subscribe({
       next: settings => {
-        this.settings = settings;
         this.settingsLoading = false;
-        if (!settings) this.error = 'The settings response was empty.';
+        if (!settings) {
+          this.settingsLoaded = false;
+          this.settingsError = 'The settings response was empty.';
+          return;
+        }
+        this.settings = settings;
+        this.settingsLoaded = true;
       },
       error: () => {
         this.settingsLoading = false;
-        this.error = 'Could not load settings.';
+        this.settingsLoaded = false;
+        this.settingsError = 'Could not load settings.';
       }
     });
-    this.api.schedule().subscribe({ next: schedule => { this.schedule = schedule; this.editableSlots = schedule.slots.map(slot => this.editableSlot(slot)); }, error: () => this.error = 'Could not load schedule.' });
-    this.api.following().subscribe({ next: response => this.following = response.data, error: error => this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.' });
+  }
+
+  loadSchedule(): void {
+    this.scheduleLoading = true;
+    this.scheduleError = '';
+    this.api.schedule().subscribe({
+      next: schedule => {
+        this.scheduleLoading = false;
+        if (!schedule || !Array.isArray(schedule.slots)) {
+          this.scheduleLoaded = false;
+          this.scheduleError = 'The schedule response was invalid.';
+          return;
+        }
+        this.schedule = schedule;
+        this.editableSlots = schedule.slots.map(slot => this.editableSlot(slot));
+        this.scheduleLoaded = true;
+      },
+      error: () => {
+        this.scheduleLoading = false;
+        this.scheduleLoaded = false;
+        this.scheduleError = 'Could not load the schedule.';
+      }
+    });
   }
 
   addSlot(): void { this.editableSlots.push(this.editableSlot({ id: crypto.randomUUID(), enabled: true, startTime: '12:00', channels: [] })); }
@@ -67,7 +121,7 @@ export class SettingsComponent implements OnInit {
   automaticLabel(channel: string): string { return channel === ANY_FOLLOWING ? 'Any following · random live followed channel' : 'Any · random live Twitch channel'; }
 
   save(): void {
-    if (!this.settings) return;
+    if (!this.canSave) return;
     this.error = ''; this.message = '';
     const slots: ScheduleSlot[] = this.editableSlots.map(slot => ({ id: slot.id, enabled: slot.enabled, startTime: slot.startTime, channels: [...this.explicitChannels(slot), ANY_FOLLOWING, ANY] }));
     this.api.saveSettings(this.settings).subscribe({ next: settings => { this.settings = settings; this.saveSchedule(slots); }, error: () => this.error = 'Settings were changed elsewhere or are invalid.' });
