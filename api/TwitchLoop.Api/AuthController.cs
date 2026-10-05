@@ -44,7 +44,14 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
     {
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state) || !Request.Cookies.TryGetValue("twitch_oauth_state", out var expected) || !CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(state), System.Text.Encoding.UTF8.GetBytes(expected))) return BadRequest(new { error = "invalid_oauth_state" });
         Response.Cookies.Delete("twitch_oauth_state");
-        var response = await clients.CreateClient().PostAsJsonAsync("https://id.twitch.tv/oauth2/token", new { client_id = configuration["TWITCH_CLIENT_ID"], client_secret = configuration["TWITCH_CLIENT_SECRET"], code, grant_type = "authorization_code", redirect_uri = configuration["TWITCH_REDIRECT_URI"] }, cancellationToken);
+        using var response = await clients.CreateClient().PostAsync("https://id.twitch.tv/oauth2/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["client_id"] = configuration["TWITCH_CLIENT_ID"] ?? string.Empty,
+            ["client_secret"] = configuration["TWITCH_CLIENT_SECRET"] ?? string.Empty,
+            ["code"] = code,
+            ["grant_type"] = "authorization_code",
+            ["redirect_uri"] = configuration["TWITCH_REDIRECT_URI"] ?? string.Empty
+        }), cancellationToken);
         if (!response.IsSuccessStatusCode) return Problem("Twitch authorization failed.", statusCode: 502);
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
         if (token is null || string.IsNullOrWhiteSpace(token.AccessToken) || string.IsNullOrWhiteSpace(token.RefreshToken)) return Problem("Twitch returned an incomplete token response.", statusCode: 502);
@@ -52,6 +59,7 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         userRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
         userRequest.Headers.Add("Client-Id", configuration["TWITCH_CLIENT_ID"]);
         using var userResponse = await clients.CreateClient().SendAsync(userRequest, cancellationToken);
+        if (!userResponse.IsSuccessStatusCode) return Problem("Twitch identity validation failed.", statusCode: 502);
         var userPayload = await userResponse.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: cancellationToken);
         var user = userPayload?.Data?.FirstOrDefault();
         if (user is null) return Problem("Twitch identity validation failed.", statusCode: 502);
