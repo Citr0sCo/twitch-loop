@@ -7,7 +7,11 @@ using Microsoft.Extensions.Logging;
 namespace TwitchLoop.Infrastructure;
 
 public sealed record TwitchStream(string Id, string UserId, string UserLogin, string UserName, DateTimeOffset StartedAt, string Language, string GameName);
-public sealed record TwitchFollow(string BroadcasterId, string BroadcasterLogin, string BroadcasterName, DateTimeOffset FollowedAt);
+public sealed record TwitchFollow(
+    [property: JsonPropertyName("broadcaster_id")] string BroadcasterId,
+    [property: JsonPropertyName("broadcaster_login")] string BroadcasterLogin,
+    [property: JsonPropertyName("broadcaster_name")] string BroadcasterName,
+    [property: JsonPropertyName("followed_at")] DateTimeOffset FollowedAt);
 public sealed record TwitchIdentity(string Id, string Login, string DisplayName, string ProfileImageUrl);
 public sealed record TwitchApiResult<T>(IReadOnlyList<T> Data, bool Complete, string? Error = null);
 

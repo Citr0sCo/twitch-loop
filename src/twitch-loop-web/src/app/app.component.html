@@ -1,5 +1,5 @@
 <header class="topbar">
-  <a class="brand" routerLink="/connect" aria-label="Twitch Loop home">
+  <a class="brand" [routerLink]="status?.connected ? '/watch' : '/connect'" aria-label="Twitch Loop home">
     <ng-container *ngIf="status?.profile as profile; else anonymousBrand">
       <img class="profile-image" [src]="profile.profileImageUrl" [alt]="profile.displayName || profile.login || 'Twitch profile'">
       <span>{{ profile.displayName || profile.login }}</span>

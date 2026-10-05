@@ -53,7 +53,7 @@ if (app.Environment.IsDevelopment())
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/; script-src 'self' https://player.twitch.tv; connect-src 'self' https://api.twitch.tv; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
+    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/; script-src 'self' https://player.twitch.tv 'sha256-LMY6wYoFV9I4wWzxaq1N/dTpl4iurQktw706UCHK3vM='; connect-src 'self' https://api.twitch.tv; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
     await next();
 });
 app.UseStaticFiles();

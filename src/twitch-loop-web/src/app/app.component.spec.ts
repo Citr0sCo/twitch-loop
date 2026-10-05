@@ -11,4 +11,12 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Twitch Loop');
     expect(fixture.nativeElement.textContent).not.toContain('Daily schedules');
   });
+
+  it('links the authenticated profile brand to the watch tab', async () => {
+    await TestBed.configureTestingModule({ imports: [AppComponent], providers: [provideRouter(routes)] }).compileComponents();
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.componentInstance.status = { setupRequired: false, connected: true, ownerConfigured: true, profile: { login: 'viewer', displayName: 'Viewer', profileImageUrl: null }, scopes: [] };
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.brand').getAttribute('href')).toBe('/watch');
+  });
 });

@@ -24,4 +24,4 @@
     <p *ngIf="editableSlots.length === 0" class="empty">Add at least one trigger time before starting playback.</p>
   </section><button class="primary" type="submit">Save settings</button>
 </form>
-<ng-template #loading><section class="panel"><p>Loading settings and followed channels…</p></section></ng-template>
+<ng-template #loading><section *ngIf="settingsLoading" class="panel"><p>Loading settings…</p></section></ng-template>
