@@ -7,13 +7,15 @@ namespace TwitchLoop.Api;
 [ApiController]
 [Authorize]
 [Route("api/sessions")]
-public sealed class SessionsController(SqliteStore store) : ControllerBase
+public sealed class SessionsController(SqliteStore store, SessionWorker sessionWorker) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Start(CancellationToken cancellationToken)
     {
         var settings = await store.GetSettingsAsync(cancellationToken);
         var session = await store.CreateSessionAsync(settings, cancellationToken);
+        await sessionWorker.EvaluateImmediatelyAsync(cancellationToken);
+        session = await store.GetSessionAsync(session.Id, cancellationToken) ?? session;
         return Created($"/api/sessions/{session.Id}", ToResponse(session, settings));
     }
 

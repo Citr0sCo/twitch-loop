@@ -8,7 +8,7 @@ public sealed class ScheduleEvaluator
         var enabled = slots.Where(slot => slot.Enabled).OrderBy(slot => slot.StartTime).ToArray();
         if (enabled.Length == 0)
         {
-            return new EvaluatedSlot(null, Array.Empty<string>(), DateOnly.FromDateTime(local.Date));
+            return new EvaluatedSlot(null, [ScheduleChannels.AnyFollowing], DateOnly.FromDateTime(local.Date));
         }
 
         var current = enabled.LastOrDefault(slot => slot.StartTime <= TimeOnly.FromDateTime(local.DateTime));

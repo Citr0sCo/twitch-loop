@@ -16,6 +16,12 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         }
     }
 
+    public async Task EvaluateImmediatelyAsync(CancellationToken cancellationToken)
+    {
+        try { await EvaluateAsync(cancellationToken); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { logger.LogError(exception, "Immediate session evaluation failed"); }
+    }
+
     private async Task<int> EvaluateAsync(CancellationToken cancellationToken)
     {
         var settings = await store.GetSettingsAsync(cancellationToken);

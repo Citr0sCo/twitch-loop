@@ -143,4 +143,48 @@ describe('SettingsComponent', () => {
     saveRequest.flush({ version: 2, slots: saveRequest.request.body.slots });
     await fixture.whenStable();
   });
+
+
+  it('alphabetizes channel choices and persists selected channels in their chosen order', async () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/settings').flush(settings);
+    http.expectOne('/api/schedule').flush({ version: 1, slots: [{ id: 'morning', enabled: true, startTime: '07:00', channels: [] }] });
+    http.expectOne('/api/channels/following').flush({
+      data: [
+        { id: '2', login: 'zulu', name: 'Zulu Channel' },
+        { id: '1', login: 'alpha', name: 'Alpha Channel' }
+      ],
+      complete: true
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const select = fixture.nativeElement.querySelector('#follow-morning') as HTMLSelectElement;
+    expect(Array.from(select.options).slice(1).map(option => option.textContent?.trim())).toEqual([
+      'Alpha Channel (@alpha)', 'Zulu Channel (@zulu)'
+    ]);
+
+    const slot = fixture.componentInstance.editableSlots[0];
+    for (const login of ['alpha', 'zulu']) {
+      select.value = login;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      fixture.detectChanges();
+    }
+    expect(fixture.componentInstance.explicitChannels(fixture.componentInstance.editableSlots[0])).toEqual(['alpha', 'zulu']);
+    fixture.componentInstance.moveChannel(slot, 0, 1);
+    fixture.detectChanges();
+
+    const saveButton = fixture.nativeElement.querySelector('form:nth-of-type(2) button[type="submit"]') as HTMLButtonElement;
+    saveButton.click();
+    const saveRequest = http.expectOne('/api/schedule');
+    expect(saveRequest.request.body.slots[0].channels).toEqual(['zulu', 'alpha', 'any-following']);
+    saveRequest.flush({ version: 2, slots: saveRequest.request.body.slots });
+    await fixture.whenStable();
+    const items = fixture.nativeElement.querySelectorAll('.channel-list li');
+    expect(items.length).toBe(3);
+    expect(items[2].classList).toContain('automatic');
+    expect(items[2].textContent).toContain('Read-only fallback');
+  });
 });

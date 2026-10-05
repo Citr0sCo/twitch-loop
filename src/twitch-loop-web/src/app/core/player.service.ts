@@ -23,7 +23,7 @@ export class PlayerService {
     await this.loadSdk();
     this.player?.destroy();
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
-    this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname] });
+    this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: true });
   }
 
   setChannel(channel: string): void { this.player?.setChannel(channel); }

@@ -12,13 +12,15 @@ export class WatchComponent implements OnInit, OnDestroy {
   private readonly player = inject(PlayerService);
   private readonly wakeLock = inject(WakeLockService);
   private pollSubscription: Subscription | null = null;
+  private pendingChannel: string | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   session: SessionState | null = null;
   manualChannel = '';
   volume = 80;
-  muted = false;
+  muted = true;
   paused = false;
+  starting = false;
   theatre = false;
   message = '';
   error = '';
@@ -26,11 +28,29 @@ export class WatchComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     const existing = sessionStorage.getItem('twitch-loop-session');
     if (existing) this.poll(existing);
+    else this.start();
   }
 
   start(channel?: string): void {
+    if (this.starting) return;
+    this.starting = true;
     this.error = '';
-    this.api.startSession().subscribe({ next: session => { sessionStorage.setItem('twitch-loop-session', session.sessionId); this.apply(session); this.poll(session.sessionId); void this.wakeLock.request(); if (channel) this.requestChannel(session.sessionId, channel); }, error: () => this.error = 'Could not start a playback session. Check the server connection.' });
+    this.api.startSession().subscribe({
+      next: session => {
+        this.starting = false;
+        sessionStorage.setItem('twitch-loop-session', session.sessionId);
+        this.apply(session);
+        this.poll(session.sessionId);
+        void this.wakeLock.request();
+        const requestedChannel = channel ?? this.pendingChannel;
+        this.pendingChannel = null;
+        if (requestedChannel) this.requestChannel(session.sessionId, requestedChannel);
+      },
+      error: () => {
+        this.starting = false;
+        this.error = 'Could not start a playback session. Check the server connection.';
+      }
+    });
   }
 
   stop(): void {
@@ -52,7 +72,10 @@ export class WatchComponent implements OnInit, OnDestroy {
       return;
     }
     this.error = '';
-    if (this.session && this.session.state !== 'stopped') this.requestChannel(this.session.sessionId, channel);
+    if (this.starting) {
+      this.pendingChannel = channel;
+      this.manualChannel = '';
+    } else if (this.session && this.session.state !== 'stopped') this.requestChannel(this.session.sessionId, channel);
     else this.start(channel);
   }
 
