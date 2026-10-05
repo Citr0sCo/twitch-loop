@@ -22,7 +22,7 @@ public sealed class ScheduleAndSelectionTests
     public void HandoffPreservesOrderedScheduledFallback()
     {
         var statuses = new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) };
-        var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), null, true);
+        var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), Array.Empty<Candidate>(), null, true);
         Assert.That(result.Channel, Is.EqualTo("second"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
     }
@@ -33,6 +33,7 @@ public sealed class ScheduleAndSelectionTests
         var result = new SelectionEngine(new FixedRandom(0)).Select(
             new[] { "first" },
             new[] { new Candidate("1", "first", LiveStatus.Unknown) },
+            Array.Empty<Candidate>(),
             new[] { new Candidate("2", "discovery", LiveStatus.Live) }, null, true);
         Assert.That(result.Channel, Is.Null);
         Assert.That(result.Reason, Is.EqualTo("scheduled_channel_status_unknown"));
@@ -47,6 +48,48 @@ public sealed class ScheduleAndSelectionTests
             new ScheduleSlot("two", true, new TimeOnly(9, 0), new[] { "beta" })
         });
         Assert.That(errors, Has.Count.EqualTo(2));
+    }
+
+
+    [Test]
+    public void AnyFollowingFallbackSelectsLiveFollowedChannel()
+    {
+        var result = new SelectionEngine(new FixedRandom(0)).Select(
+            new[] { "offline", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { new Candidate("1", "offline", LiveStatus.Offline) },
+            new[] { new Candidate("2", "followed", LiveStatus.Live) },
+            new[] { new Candidate("3", "discovery", LiveStatus.Live) }, null, true);
+
+        Assert.That(result.Channel, Is.EqualTo("followed"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Personal));
+        Assert.That(result.Reason, Is.EqualTo("any_following_live"));
+    }
+
+    [Test]
+    public void AnyFallbackSelectsLiveTwitchChannelWhenFollowsAreOffline()
+    {
+        var result = new SelectionEngine(new FixedRandom(0)).Select(
+            new[] { "offline", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { new Candidate("1", "offline", LiveStatus.Offline) },
+            new[] { new Candidate("2", "followed", LiveStatus.Offline) },
+            new[] { new Candidate("3", "discovery", LiveStatus.Live) }, null, true);
+
+        Assert.That(result.Channel, Is.EqualTo("discovery"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Discovery));
+        Assert.That(result.Reason, Is.EqualTo("any_live"));
+    }
+
+    [Test]
+    public void OfflineCurrentChannelReevaluatesOrderedFallbacks()
+    {
+        var result = new SelectionEngine(new FixedRandom(0)).Select(
+            new[] { "first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) },
+            Array.Empty<Candidate>(),
+            Array.Empty<Candidate>(), "first", true);
+
+        Assert.That(result.Channel, Is.EqualTo("second"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
     }
 
     private sealed class FixedRandom(int value) : IRandomSource

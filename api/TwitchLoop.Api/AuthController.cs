@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -19,6 +20,12 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
         connected = User.Identity?.IsAuthenticated == true && await store.HasConnectionAsync(cancellationToken),
         ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
+        profile = User.Identity?.IsAuthenticated == true ? new
+        {
+            login = User.FindFirstValue("twitch_user_login"),
+            displayName = User.FindFirstValue("twitch_user_display_name"),
+            profileImageUrl = User.FindFirstValue("twitch_user_profile_image_url")
+        } : null,
         scopes = new[] { "user:read:follows", "user:read:subscriptions" }
     });
 
@@ -65,8 +72,15 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         if (user is null) return Problem("Twitch identity validation failed.", statusCode: 502);
         var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]?.Trim();
         if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Login, StringComparison.OrdinalIgnoreCase)) return Redirect("/connect?error=owner_mismatch");
-        await store.SaveConnectionAsync(tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("twitch_user_login", user.Login)], CookieAuthenticationDefaults.AuthenticationScheme)));
+        await store.SaveConnectionAsync(user.Id, tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
+        var claims = new[]
+        {
+            new Claim("twitch_user_id", user.Id),
+            new Claim("twitch_user_login", user.Login),
+            new Claim("twitch_user_display_name", user.DisplayName),
+            new Claim("twitch_user_profile_image_url", user.ProfileImageUrl)
+        };
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
         return Redirect("/watch?connected=1");
     }
 
@@ -80,6 +94,10 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
 
     private sealed record TokenResponse([property: System.Text.Json.Serialization.JsonPropertyName("access_token")] string AccessToken, [property: System.Text.Json.Serialization.JsonPropertyName("refresh_token")] string RefreshToken, [property: System.Text.Json.Serialization.JsonPropertyName("expires_in")] int ExpiresIn);
     private sealed record UserResponse([property: System.Text.Json.Serialization.JsonPropertyName("data")] List<TwitchUser> Data);
-    private sealed record TwitchUser([property: System.Text.Json.Serialization.JsonPropertyName("login")] string Login);
+    private sealed record TwitchUser(
+        [property: System.Text.Json.Serialization.JsonPropertyName("id")] string Id,
+        [property: System.Text.Json.Serialization.JsonPropertyName("login")] string Login,
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_name")] string DisplayName,
+        [property: System.Text.Json.Serialization.JsonPropertyName("profile_image_url")] string ProfileImageUrl);
 
 }

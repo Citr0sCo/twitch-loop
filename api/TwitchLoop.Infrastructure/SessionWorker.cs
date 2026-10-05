@@ -24,14 +24,28 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         if (connection is null || connection.ExpiresAt <= clock.UtcNow) return;
         var timeZone = ResolveTimeZone(settings.TimeZone);
         var evaluated = new TwitchLoop.Core.ScheduleEvaluator().Evaluate(await store.GetScheduleAsync(cancellationToken), clock.UtcNow, timeZone);
-        var status = await twitch.GetStreamsAsync(evaluated.Channels, tokens.Unprotect(connection.EncryptedAccessToken), cancellationToken);
+        var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
+        var followed = string.IsNullOrWhiteSpace(connection.TwitchUserId)
+            ? new TwitchApiResult<TwitchFollow>([], false, "missing_user_id")
+            : await twitch.GetFollowedChannelsAsync(connection.TwitchUserId, accessToken, cancellationToken);
+        var scheduledLogins = evaluated.Channels.Where(channel => !TwitchLoop.Core.ScheduleChannels.IsAutomaticFallback(channel)).ToArray();
+        var followedLogins = followed.Data.Select(channel => channel.BroadcasterLogin).ToArray();
+        var activeLogins = sessions.Select(session => session.Channel).OfType<string>();
+        var trackedLogins = scheduledLogins.Concat(followedLogins).Concat(activeLogins).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var status = await twitch.GetStreamsAsync(trackedLogins, accessToken, cancellationToken);
         var live = status.Data.Select(stream => stream.UserLogin).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var candidates = evaluated.Channels.Select(login => new TwitchLoop.Core.Candidate(login, login, status.Complete ? (live.Contains(login) ? TwitchLoop.Core.LiveStatus.Live : TwitchLoop.Core.LiveStatus.Offline) : TwitchLoop.Core.LiveStatus.Unknown)).ToArray();
+        TwitchLoop.Core.LiveStatus StatusFor(string login) => status.Complete ? (live.Contains(login) ? TwitchLoop.Core.LiveStatus.Live : TwitchLoop.Core.LiveStatus.Offline) : TwitchLoop.Core.LiveStatus.Unknown;
+        var scheduledCandidates = scheduledLogins.Select(login => new TwitchLoop.Core.Candidate(login, login, StatusFor(login))).ToArray();
+        var followingCandidates = followedLogins.Select(login => new TwitchLoop.Core.Candidate(login, login, StatusFor(login))).ToArray();
+        var discovery = await twitch.GetStreamsAsync([], accessToken, cancellationToken);
+        var discoveryCandidates = discovery.Complete
+            ? discovery.Data.Select(stream => new TwitchLoop.Core.Candidate(stream.Id, stream.UserLogin, TwitchLoop.Core.LiveStatus.Live)).ToArray()
+            : Array.Empty<TwitchLoop.Core.Candidate>();
         var engine = new TwitchLoop.Core.SelectionEngine(random);
         foreach (var session in sessions)
         {
             if (session.Channel is not null && status.Complete && live.Contains(session.Channel)) continue;
-            var decision = engine.Select(evaluated.Channels, candidates, Array.Empty<TwitchLoop.Core.Candidate>(), session.Channel, settings.RandomDiscoveryEnabled);
+            var decision = engine.Select(evaluated.Channels, scheduledCandidates, followingCandidates, discoveryCandidates, session.Channel, settings.RandomDiscoveryEnabled);
             await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken);
             logger.LogDebug("Evaluated session {SessionId}: {Reason}", session.Id, decision.Reason);
         }

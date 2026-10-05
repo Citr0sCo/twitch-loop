@@ -1,8 +1,16 @@
 <header class="topbar">
-  <a class="brand" routerLink="/connect" aria-label="Twitch Loop home"><span class="brand-mark">TL</span><span>Twitch Loop</span></a>
+  <a class="brand" routerLink="/connect" aria-label="Twitch Loop home">
+    <ng-container *ngIf="status?.profile as profile; else anonymousBrand">
+      <img class="profile-image" [src]="profile.profileImageUrl" [alt]="profile.displayName || profile.login || 'Twitch profile'">
+      <span>{{ profile.displayName || profile.login }}</span>
+    </ng-container>
+    <ng-template #anonymousBrand><span class="brand-mark">TL</span><span>Twitch Loop</span></ng-template>
+  </a>
   <nav *ngIf="status?.connected" aria-label="Primary navigation">
     <a routerLink="/watch" routerLinkActive="active">Watch</a>
     <a routerLink="/settings" routerLinkActive="active">Settings</a>
+    <button class="logout" type="button" (click)="logout()">Logout</button>
   </nav>
 </header>
+<p *ngIf="logoutError" class="logout-error" role="alert">{{ logoutError }}</p>
 <main><router-outlet /></main>
