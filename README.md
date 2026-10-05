@@ -18,7 +18,7 @@ A self-hosted Twitch player with daily schedules and automatic live-channel fall
 ## Quick start with Docker Compose
 
 1. Register a Twitch application at the Twitch developer console. Use an exact callback such as `https://twitch-loop.example.com/api/auth/twitch/callback`.
-2. Copy `.env.example` to `.env`, then set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, and `TWITCH_REDIRECT_URI`. Keep the client secret only in the deployment environment. Set `APP_ALLOWED_OWNER_TWITCH_ID` if this deployment should be restricted to one Twitch account.
+2. Copy `.env.example` to `.env`, then set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_REDIRECT_URI`, and `APP_ALLOWED_OWNER_TWITCH_LOGIN` to the Twitch login allowed to connect. Keep the client secret only in the deployment environment.
 3. Build and start the local image:
 
    ```sh
@@ -36,7 +36,7 @@ For a published-image deployment, copy `examples/docker-compose.yml` and use a m
 
 Settings are stored in SQLite and edited from the Settings page. Playback preferences, polling intervals, session duration, discovery behavior, and the daily schedule do not need to be supplied through `.env`. The environment file is reserved for hosting and Twitch OAuth configuration; see `.env.example` for the required variables.
 
-When `APP_ALLOWED_OWNER_TWITCH_ID` is configured, the callback compares the Twitch account ID returned by Twitch—not the display username—and rejects other accounts. Leave it empty for the normal single-user self-hosted setup. Twitch tokens never go to Angular or logs, and the OAuth callback uses a short-lived browser-bound state value.
+`APP_ALLOWED_OWNER_TWITCH_LOGIN` configures the single Twitch login allowed to connect. The callback compares the authenticated Twitch login returned by Twitch case-insensitively and rejects other accounts. Twitch tokens never go to Angular or logs, and the OAuth callback uses a short-lived browser-bound state value.
 
 ## Architecture and adopted conventions
 

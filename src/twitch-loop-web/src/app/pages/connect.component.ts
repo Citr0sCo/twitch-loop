@@ -12,7 +12,7 @@ export class ConnectComponent implements OnInit {
 
   ngOnInit(): void {
     if (this.route.snapshot.queryParamMap.get('error') === 'owner_mismatch') {
-      this.error = 'This Twitch account is not the configured owner. Sign in with the whitelisted Twitch account or update APP_ALLOWED_OWNER_TWITCH_ID with that account’s numeric Twitch ID.';
+      this.error = 'This Twitch account is not the configured owner. Sign in with the whitelisted Twitch account or update APP_ALLOWED_OWNER_TWITCH_LOGIN with that account’s Twitch login.';
     }
     this.api.authStatus().subscribe({ next: status => this.status = status, error: () => this.error = 'The local API is not available yet.' });
   }
