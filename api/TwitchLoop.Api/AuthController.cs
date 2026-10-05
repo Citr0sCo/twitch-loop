@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TwitchLoop.Infrastructure;
 
@@ -11,15 +12,17 @@ namespace TwitchLoop.Api;
 [Route("api/auth")]
 public sealed class AuthController(IConfiguration configuration, IHttpClientFactory clients, TokenStore tokens, SqliteStore store) : ControllerBase
 {
+    [AllowAnonymous]
     [HttpGet("status")]
     public async Task<IActionResult> Status(CancellationToken cancellationToken) => Ok(new
     {
-        setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]),
-        connected = await store.HasConnectionAsync(cancellationToken),
+        setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_ID"]),
+        connected = User.Identity?.IsAuthenticated == true && await store.HasConnectionAsync(cancellationToken),
         ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_ID"]),
         scopes = new[] { "user:read:follows", "user:read:subscriptions" }
     });
 
+    [AllowAnonymous]
     [HttpGet("twitch/start")]
     public IActionResult Start()
     {
@@ -35,6 +38,7 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         return Redirect(url);
     }
 
+    [AllowAnonymous]
     [HttpGet("twitch/callback")]
     public async Task<IActionResult> Callback([FromQuery] string? code, [FromQuery] string? state, CancellationToken cancellationToken)
     {
@@ -52,15 +56,17 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         var user = userPayload?.Data?.FirstOrDefault();
         if (user is null) return Problem("Twitch identity validation failed.", statusCode: 502);
         var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_ID"];
-        if (!string.IsNullOrWhiteSpace(allowedOwner) && !string.Equals(allowedOwner, user.Id, StringComparison.Ordinal)) return Forbid();
+        if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Id, StringComparison.Ordinal)) return Forbid();
         await store.SaveConnectionAsync(user.Id, tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("twitch_user_id", user.Id)], CookieAuthenticationDefaults.AuthenticationScheme)));
         return Redirect("/watch?connected=1");
     }
 
+    [Authorize]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout() { await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
 
+    [Authorize]
     [HttpPost("disconnect")]
     public async Task<IActionResult> Disconnect(CancellationToken cancellationToken) { await store.DeleteConnectionAsync(cancellationToken); await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
 

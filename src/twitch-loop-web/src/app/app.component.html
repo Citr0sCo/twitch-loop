@@ -1,6 +1,6 @@
 <header class="topbar">
   <a class="brand" routerLink="/connect" aria-label="Twitch Loop home"><span class="brand-mark">TL</span><span>Twitch Loop</span></a>
-  <nav aria-label="Primary navigation">
+  <nav *ngIf="status?.connected" aria-label="Primary navigation">
     <a routerLink="/watch" routerLinkActive="active">Watch</a>
     <a routerLink="/settings" routerLinkActive="active">Settings</a>
   </nav>
