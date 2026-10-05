@@ -6,7 +6,7 @@ using TwitchLoop.Core;
 namespace TwitchLoop.Infrastructure;
 
 public sealed record StoredSession(string Id, string State, string? Channel, string AutomationMode, int Revision, DateTimeOffset StartedAt, DateTimeOffset ExpiresAt);
-public sealed record StoredConnection(string TwitchUserId, string EncryptedAccessToken, string EncryptedRefreshToken, string Scopes, DateTimeOffset ExpiresAt);
+public sealed record StoredConnection(string EncryptedAccessToken, string EncryptedRefreshToken, string Scopes, DateTimeOffset ExpiresAt);
 
 public sealed class SqliteStore
 {
@@ -39,7 +39,7 @@ public sealed class SqliteStore
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, json TEXT NOT NULL, source TEXT NOT NULL, content_hash TEXT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS schedule (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, json TEXT NOT NULL, source TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, state TEXT NOT NULL, channel TEXT NULL, automation_mode TEXT NOT NULL, revision INTEGER NOT NULL, started_at TEXT NOT NULL, expires_at TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS twitch_connection (id INTEGER PRIMARY KEY CHECK (id = 1), twitch_user_id TEXT NOT NULL, encrypted_access_token TEXT NOT NULL, encrypted_refresh_token TEXT NOT NULL, scopes TEXT NOT NULL, expires_at TEXT NOT NULL, validated_at TEXT NULL);
+                CREATE TABLE IF NOT EXISTS twitch_connection (id INTEGER PRIMARY KEY CHECK (id = 1), encrypted_access_token TEXT NOT NULL, encrypted_refresh_token TEXT NOT NULL, scopes TEXT NOT NULL, expires_at TEXT NOT NULL, validated_at TEXT NULL);
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -89,7 +89,7 @@ public sealed class SqliteStore
         finally { gate.Release(); }
     }
 
-    public async Task SaveConnectionAsync(string twitchUserId, string encryptedAccessToken, string encryptedRefreshToken, string scopes, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+    public async Task SaveConnectionAsync(string encryptedAccessToken, string encryptedRefreshToken, string scopes, DateTimeOffset expiresAt, CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -97,8 +97,7 @@ public sealed class SqliteStore
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "INSERT INTO twitch_connection (id,twitch_user_id,encrypted_access_token,encrypted_refresh_token,scopes,expires_at,validated_at) VALUES (1,$user,$access,$refresh,$scopes,$expires,$validated) ON CONFLICT(id) DO UPDATE SET twitch_user_id=$user,encrypted_access_token=$access,encrypted_refresh_token=$refresh,scopes=$scopes,expires_at=$expires,validated_at=$validated";
-            command.Parameters.AddWithValue("$user", twitchUserId);
+            command.CommandText = "INSERT INTO twitch_connection (id,encrypted_access_token,encrypted_refresh_token,scopes,expires_at,validated_at) VALUES (1,$access,$refresh,$scopes,$expires,$validated) ON CONFLICT(id) DO UPDATE SET encrypted_access_token=$access,encrypted_refresh_token=$refresh,scopes=$scopes,expires_at=$expires,validated_at=$validated";
             command.Parameters.AddWithValue("$access", encryptedAccessToken);
             command.Parameters.AddWithValue("$refresh", encryptedRefreshToken);
             command.Parameters.AddWithValue("$scopes", scopes);
@@ -180,10 +179,10 @@ public sealed class SqliteStore
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT twitch_user_id,encrypted_access_token,encrypted_refresh_token,scopes,expires_at FROM twitch_connection WHERE id = 1";
+            command.CommandText = "SELECT encrypted_access_token,encrypted_refresh_token,scopes,expires_at FROM twitch_connection WHERE id = 1";
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)) return null;
-            return new StoredConnection(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), DateTimeOffset.Parse(reader.GetString(4)));
+            return new StoredConnection(reader.GetString(0), reader.GetString(1), reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)));
         }
         finally { gate.Release(); }
     }

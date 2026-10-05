@@ -16,9 +16,9 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
     [HttpGet("status")]
     public async Task<IActionResult> Status(CancellationToken cancellationToken) => Ok(new
     {
-        setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_ID"]),
+        setupRequired = string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_ID"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_CLIENT_SECRET"]) || string.IsNullOrWhiteSpace(configuration["TWITCH_REDIRECT_URI"]) || string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
         connected = User.Identity?.IsAuthenticated == true && await store.HasConnectionAsync(cancellationToken),
-        ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_ID"]),
+        ownerConfigured = !string.IsNullOrWhiteSpace(configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]),
         scopes = new[] { "user:read:follows", "user:read:subscriptions" }
     });
 
@@ -63,10 +63,10 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         var userPayload = await userResponse.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: cancellationToken);
         var user = userPayload?.Data?.FirstOrDefault();
         if (user is null) return Problem("Twitch identity validation failed.", statusCode: 502);
-        var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_ID"]?.Trim();
-        if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Id, StringComparison.Ordinal)) return Redirect("/connect?error=owner_mismatch");
-        await store.SaveConnectionAsync(user.Id, tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("twitch_user_id", user.Id)], CookieAuthenticationDefaults.AuthenticationScheme)));
+        var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]?.Trim();
+        if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Login, StringComparison.OrdinalIgnoreCase)) return Redirect("/connect?error=owner_mismatch");
+        await store.SaveConnectionAsync(tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new System.Security.Claims.Claim("twitch_user_login", user.Login)], CookieAuthenticationDefaults.AuthenticationScheme)));
         return Redirect("/watch?connected=1");
     }
 
@@ -80,6 +80,6 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
 
     private sealed record TokenResponse([property: System.Text.Json.Serialization.JsonPropertyName("access_token")] string AccessToken, [property: System.Text.Json.Serialization.JsonPropertyName("refresh_token")] string RefreshToken, [property: System.Text.Json.Serialization.JsonPropertyName("expires_in")] int ExpiresIn);
     private sealed record UserResponse([property: System.Text.Json.Serialization.JsonPropertyName("data")] List<TwitchUser> Data);
-    private sealed record TwitchUser([property: System.Text.Json.Serialization.JsonPropertyName("id")] string Id);
+    private sealed record TwitchUser([property: System.Text.Json.Serialization.JsonPropertyName("login")] string Login);
 
 }
