@@ -14,7 +14,7 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
     public async Task<TwitchApiResult<TwitchStream>> GetStreamsAsync(IEnumerable<string> userLogins, string? accessToken, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(accessToken)) return new([], false, "not_connected");
-        var clientId = configuration["Twitch:ClientId"];
+        var clientId = configuration["TWITCH_CLIENT_ID"];
         if (string.IsNullOrWhiteSpace(clientId)) return new([], false, "setup_required");
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.twitch.tv/helix/streams");
         foreach (var login in userLogins.Distinct(StringComparer.OrdinalIgnoreCase).Take(100)) request.Headers.Add("user_login", login);
