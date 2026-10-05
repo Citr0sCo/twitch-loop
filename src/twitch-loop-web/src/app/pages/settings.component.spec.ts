@@ -113,4 +113,34 @@ describe('SettingsComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"] button').textContent).toContain('Retry settings');
     expect(fixture.nativeElement.textContent).not.toContain('Loading schedule');
   });
+
+  it('enables schedule editing and saving after valid schedule and following responses', async () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/settings').flush(settings);
+    http.expectOne('/api/schedule').flush({
+      version: 1,
+      slots: [{ id: 'morning', enabled: true, startTime: '07:00', channels: ['channel', 'any-following'] }]
+    });
+    http.expectOne('/api/channels/following').flush({
+      data: [{ id: '1', login: 'channel', name: 'Channel' }], complete: true
+    });
+    await fixture.whenStable();
+
+    const addButton = fixture.nativeElement.querySelector('.section-head button') as HTMLButtonElement;
+    const saveButton = fixture.nativeElement.querySelector('form:nth-of-type(2) button[type="submit"]') as HTMLButtonElement;
+    expect(addButton.disabled).toBeFalse();
+    expect(saveButton.disabled).toBeFalse();
+    addButton.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.slot').length).toBe(2);
+
+    saveButton.click();
+    const saveRequest = http.expectOne('/api/schedule');
+    expect(saveRequest.request.method).toBe('PUT');
+    expect(saveRequest.request.body.slots).toHaveSize(2);
+    saveRequest.flush({ version: 2, slots: saveRequest.request.body.slots });
+    await fixture.whenStable();
+  });
 });

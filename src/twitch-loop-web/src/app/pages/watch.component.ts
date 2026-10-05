@@ -60,7 +60,7 @@ export class WatchComponent implements OnInit, OnDestroy {
   setVolume(): void { this.player.setVolume(this.volume / 100); }
   toggleMute(): void { this.muted = !this.muted; this.player.setMuted(this.muted); }
   toggleTheatre(): void { this.theatre = !this.theatre; }
-  nativeFullscreen(): void { void document.documentElement.requestFullscreen?.(); }
+  nativeFullscreen(): void { void this.player.requestFullscreen().catch(() => this.error = 'Fullscreen is unavailable for the Twitch player.'); }
 
   ngOnDestroy(): void { this.pollSubscription?.unsubscribe(); this.player.destroy(); void this.wakeLock.release(); }
 

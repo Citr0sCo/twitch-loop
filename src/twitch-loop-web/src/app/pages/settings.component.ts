@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService, FollowingChannel, ScheduleResponse, ScheduleSlot, Settings } from '../core/api.service';
 
@@ -11,6 +11,7 @@ interface EditableSlot extends ScheduleSlot { selectedLogin: string; }
 @Component({ selector: 'tl-settings', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './settings.component.html', styleUrl: './settings.component.scss' })
 export class SettingsComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly changeDetector = inject(ChangeDetectorRef);
   settings: Settings = {
     version: 1,
     keepAwake: true,
@@ -39,7 +40,10 @@ export class SettingsComponent implements OnInit {
   ngOnInit(): void {
     this.loadSettings();
     this.loadSchedule();
-    this.api.following().subscribe({ next: response => this.following = response.data, error: error => this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.' });
+    this.api.following().subscribe({
+      next: response => { this.following = response.data; this.changeDetector.markForCheck(); },
+      error: error => { this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.'; this.changeDetector.markForCheck(); }
+    });
   }
 
   loadSettings(): void {
@@ -51,15 +55,18 @@ export class SettingsComponent implements OnInit {
         if (!settings) {
           this.settingsLoaded = false;
           this.settingsError = 'The settings response was empty.';
+          this.changeDetector.markForCheck();
           return;
         }
         this.settings = settings;
         this.settingsLoaded = true;
+        this.changeDetector.markForCheck();
       },
       error: () => {
         this.settingsLoading = false;
         this.settingsLoaded = false;
         this.settingsError = 'Could not load settings.';
+        this.changeDetector.markForCheck();
       }
     });
   }
@@ -73,16 +80,19 @@ export class SettingsComponent implements OnInit {
         if (!schedule || !Array.isArray(schedule.slots)) {
           this.scheduleLoaded = false;
           this.scheduleError = 'The schedule response was invalid.';
+          this.changeDetector.markForCheck();
           return;
         }
         this.schedule = schedule;
         this.editableSlots = schedule.slots.map(slot => this.editableSlot(slot));
         this.scheduleLoaded = true;
+        this.changeDetector.markForCheck();
       },
       error: () => {
         this.scheduleLoading = false;
         this.scheduleLoaded = false;
         this.scheduleError = 'Could not load the schedule.';
+        this.changeDetector.markForCheck();
       }
     });
   }
@@ -121,7 +131,10 @@ export class SettingsComponent implements OnInit {
   saveSettings(): void {
     if (!this.canSaveSettings) return;
     this.error = ''; this.message = '';
-    this.api.saveSettings(this.settings).subscribe({ next: settings => { this.settings = settings; this.message = 'Playback settings saved.'; }, error: () => this.error = 'Settings were changed elsewhere or are invalid.' });
+    this.api.saveSettings(this.settings).subscribe({
+      next: settings => { this.settings = settings; this.message = 'Playback settings saved.'; this.changeDetector.markForCheck(); },
+      error: () => { this.error = 'Settings were changed elsewhere or are invalid.'; this.changeDetector.markForCheck(); }
+    });
   }
 
   saveSchedule(): void {
@@ -134,6 +147,9 @@ export class SettingsComponent implements OnInit {
   private editableSlot(slot: ScheduleSlot): EditableSlot { return { ...slot, channels: [...slot.channels.filter(channel => !this.isAutomatic(channel)), ANY_FOLLOWING], selectedLogin: '' }; }
 
   private persistSchedule(slots: ScheduleSlot[]): void {
-    this.api.saveSchedule({ ...this.schedule, slots }).subscribe({ next: response => { this.schedule = response; this.editableSlots = response.slots.map(slot => this.editableSlot(slot)); this.message = 'Schedule saved. Changes apply on the next evaluation.'; }, error: error => this.error = error?.error?.errors?.join(' ') ?? 'Schedule is invalid.' });
+    this.api.saveSchedule({ ...this.schedule, slots }).subscribe({
+      next: response => { this.schedule = response; this.editableSlots = response.slots.map(slot => this.editableSlot(slot)); this.message = 'Schedule saved. Changes apply on the next evaluation.'; this.changeDetector.markForCheck(); },
+      error: error => { this.error = error?.error?.errors?.join(' ') ?? 'Schedule is invalid.'; this.changeDetector.markForCheck(); }
+    });
   }
 }

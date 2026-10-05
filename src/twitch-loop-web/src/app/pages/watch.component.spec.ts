@@ -6,11 +6,13 @@ import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setChannel', 'setVolume', 'setMuted', 'pause', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
+    sessionStorage.clear();
     player.mount.and.returnValue(Promise.resolve());
+    player.requestFullscreen.and.returnValue(Promise.resolve());
     wakeLock.supported.and.returnValue(true);
     wakeLock.active.and.returnValue(false);
     wakeLock.request.and.returnValue(Promise.resolve(true));
@@ -96,5 +98,18 @@ describe('WatchComponent', () => {
     expect(component.manualChannel).toBe('');
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
+  });
+
+  it('requests fullscreen for the Twitch player', async () => {
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+
+    const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
+    const button = Array.from(buttons).find(candidate => candidate.textContent?.trim() === 'Fullscreen')!;
+    button.click();
+    await fixture.whenStable();
+
+    expect(player.requestFullscreen).toHaveBeenCalled();
+    fixture.destroy();
   });
 });
