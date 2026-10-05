@@ -4,9 +4,9 @@ import { Observable } from 'rxjs';
 
 export interface AuthProfile { login: string | null; displayName: string | null; profileImageUrl: string | null; }
 export interface AuthStatus { setupRequired: boolean; connected: boolean; ownerConfigured: boolean; profile: AuthProfile | null; scopes: string[]; }
-export interface Settings { version: number; timeZone: string; channelPoolMode: string; keepAwake: boolean; autoMaximiseStream: boolean; maximiseMode: string; twitchPollSeconds: number; browserPollSeconds: number; randomDiscoveryEnabled: boolean; sessionDurationHours: number; source: string; }
+export interface Settings { version: number; keepAwake: boolean; autoMaximiseStream: boolean; maximiseMode: string; twitchPollSeconds: number; browserPollSeconds: number; sessionDurationHours: number; source: string; }
 export interface ScheduleSlot { id: string; enabled: boolean; startTime: string; channels: string[]; }
-export interface ScheduleResponse { version: number; timeZone: string; slots: ScheduleSlot[]; }
+export interface ScheduleResponse { version: number; slots: ScheduleSlot[]; }
 export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
 export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; activeSlotId: string | null; nextSlotTime: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }

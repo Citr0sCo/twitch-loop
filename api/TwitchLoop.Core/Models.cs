@@ -1,12 +1,12 @@
 namespace TwitchLoop.Core;
 
 public enum LiveStatus { Unknown, Offline, Live }
-public enum SelectionTier { Scheduled, Personal, Discovery }
+public enum SelectionTier { Scheduled, Personal }
 
 public static class ScheduleChannels
 {
     public const string AnyFollowing = "any-following";
-    public const string Any = "any";
+    private const string LegacyAny = "any";
 
     public static IReadOnlyList<string> Normalize(IEnumerable<string> channels)
     {
@@ -15,12 +15,11 @@ public static class ScheduleChannels
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         result.Add(AnyFollowing);
-        result.Add(Any);
         return result;
     }
 
     public static bool IsAutomaticFallback(string channel) =>
-        string.Equals(channel, AnyFollowing, StringComparison.OrdinalIgnoreCase) || string.Equals(channel, Any, StringComparison.OrdinalIgnoreCase);
+        string.Equals(channel, AnyFollowing, StringComparison.OrdinalIgnoreCase) || string.Equals(channel, LegacyAny, StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record ScheduleSlot(string Id, bool Enabled, TimeOnly StartTime, IReadOnlyList<string> Channels);
@@ -31,14 +30,11 @@ public sealed record SelectionResult(string? Channel, SelectionTier? Tier, strin
 public sealed class AppSettings
 {
     public int Version { get; set; } = 1;
-    public string TimeZone { get; set; } = "Europe/London";
-    public string ChannelPoolMode { get; set; } = "paidSubscriptions";
     public bool KeepAwake { get; set; } = true;
     public bool AutoMaximiseStream { get; set; } = true;
     public string MaximiseMode { get; set; } = "theatre";
     public int TwitchPollSeconds { get; set; } = 60;
     public int BrowserPollSeconds { get; set; } = 15;
-    public bool RandomDiscoveryEnabled { get; set; } = true;
     public int SessionDurationHours { get; set; } = 24;
     public string Source { get; set; } = "database";
 }

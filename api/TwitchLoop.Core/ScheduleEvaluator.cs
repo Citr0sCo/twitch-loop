@@ -16,3 +16,16 @@ public sealed class ScheduleEvaluator
         return new EvaluatedSlot(current.Id, current.Channels, DateOnly.FromDateTime(local.Date));
     }
 }
+
+public static class ScheduleTimeZones
+{
+    public const string DefaultId = "Europe/London";
+
+    public static TimeZoneInfo Resolve(string? id)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(string.IsNullOrWhiteSpace(id) ? DefaultId : id); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.Utc; }
+        catch (InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
+    }
+}
+

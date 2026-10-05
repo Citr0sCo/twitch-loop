@@ -13,7 +13,7 @@ public sealed record ScheduleSlotRequest(string Id, bool Enabled, string StartTi
 public sealed class ScheduleController(SqliteStore store) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Get(CancellationToken cancellationToken) => Ok(new { version = 1, timeZone = (await store.GetSettingsAsync(cancellationToken)).TimeZone, slots = await store.GetScheduleAsync(cancellationToken) });
+    public async Task<IActionResult> Get(CancellationToken cancellationToken) => Ok(new { version = 1, slots = await store.GetScheduleAsync(cancellationToken) });
 
     [HttpPut]
     public async Task<IActionResult> Put([FromBody] SchedulePutRequest request, CancellationToken cancellationToken)

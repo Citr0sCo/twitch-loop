@@ -19,10 +19,18 @@ public sealed class ScheduleAndSelectionTests
     }
 
     [Test]
+    public void ScheduleTimeZoneUsesEnvironmentOverrideAndLondonDefault()
+    {
+        Assert.That(ScheduleTimeZones.Resolve("America/Toronto").Id, Is.EqualTo("America/Toronto"));
+        Assert.That(ScheduleTimeZones.Resolve(null).Id, Is.EqualTo("Europe/London"));
+        Assert.That(ScheduleTimeZones.Resolve("invalid-zone"), Is.EqualTo(TimeZoneInfo.Utc));
+    }
+
+    [Test]
     public void HandoffPreservesOrderedScheduledFallback()
     {
         var statuses = new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) };
-        var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), Array.Empty<Candidate>(), null, true);
+        var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), null);
         Assert.That(result.Channel, Is.EqualTo("second"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
     }
@@ -33,8 +41,7 @@ public sealed class ScheduleAndSelectionTests
         var result = new SelectionEngine(new FixedRandom(0)).Select(
             new[] { "first" },
             new[] { new Candidate("1", "first", LiveStatus.Unknown) },
-            Array.Empty<Candidate>(),
-            new[] { new Candidate("2", "discovery", LiveStatus.Live) }, null, true);
+            Array.Empty<Candidate>(), null);
         Assert.That(result.Channel, Is.Null);
         Assert.That(result.Reason, Is.EqualTo("scheduled_channel_status_unknown"));
     }
@@ -55,10 +62,9 @@ public sealed class ScheduleAndSelectionTests
     public void AnyFollowingFallbackSelectsLiveFollowedChannel()
     {
         var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "offline", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { "offline", ScheduleChannels.AnyFollowing, "any" },
             new[] { new Candidate("1", "offline", LiveStatus.Offline) },
-            new[] { new Candidate("2", "followed", LiveStatus.Live) },
-            new[] { new Candidate("3", "discovery", LiveStatus.Live) }, null, true);
+            new[] { new Candidate("2", "followed", LiveStatus.Live) }, null);
 
         Assert.That(result.Channel, Is.EqualTo("followed"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Personal));
@@ -66,27 +72,24 @@ public sealed class ScheduleAndSelectionTests
     }
 
     [Test]
-    public void AnyFallbackSelectsLiveTwitchChannelWhenFollowsAreOffline()
+    public void LegacyAnyFallbackNeverSelectsNonFollowedChannels()
     {
         var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "offline", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { "offline", ScheduleChannels.AnyFollowing, "any" },
             new[] { new Candidate("1", "offline", LiveStatus.Offline) },
-            new[] { new Candidate("2", "followed", LiveStatus.Offline) },
-            new[] { new Candidate("3", "discovery", LiveStatus.Live) }, null, true);
+            new[] { new Candidate("2", "followed", LiveStatus.Offline) }, null);
 
-        Assert.That(result.Channel, Is.EqualTo("discovery"));
-        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Discovery));
-        Assert.That(result.Reason, Is.EqualTo("any_live"));
+        Assert.That(result.Channel, Is.Null);
+        Assert.That(result.Reason, Is.EqualTo("no_live_candidate"));
     }
 
     [Test]
     public void OfflineCurrentChannelReevaluatesOrderedFallbacks()
     {
         var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any },
+            new[] { "first", "second", ScheduleChannels.AnyFollowing, "any" },
             new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) },
-            Array.Empty<Candidate>(),
-            Array.Empty<Candidate>(), "first", true);
+            Array.Empty<Candidate>(), "first");
 
         Assert.That(result.Channel, Is.EqualTo("second"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));

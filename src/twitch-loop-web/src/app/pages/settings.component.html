@@ -1,23 +1,25 @@
 <section class="page-heading"><p class="eyebrow">Configuration</p><h1>Settings</h1><p>Set the times Twitch Loop should switch and the ordered followed channels it should try.</p></section>
 <div *ngIf="message" class="notice success" role="status">{{ message }}</div><div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
-<div *ngIf="settingsLoading || scheduleLoading" class="notice" role="status">Loading settings and schedule…</div>
+<div *ngIf="settingsLoading || scheduleLoading" class="notice" role="status">{{ settingsLoading ? 'Loading playback settings…' : '' }}{{ settingsLoading && scheduleLoading ? ' ' : '' }}{{ scheduleLoading ? 'Loading schedule…' : '' }}</div>
 <section *ngIf="settingsError || scheduleError" class="notice error" role="alert">
   <p *ngIf="settingsError">{{ settingsError }} <button type="button" (click)="loadSettings()">Retry settings</button></p>
   <p *ngIf="scheduleError">{{ scheduleError }} <button type="button" (click)="loadSchedule()">Retry schedule</button></p>
 </section>
-<form (ngSubmit)="save()">
-  <fieldset class="settings-fields" [disabled]="!canSave">
+<form (ngSubmit)="saveSettings()">
+  <fieldset class="settings-fields" [disabled]="!settingsLoaded || settingsLoading">
   <section class="panel"><h2>Playback</h2><div class="grid">
-    <label>Time zone<input name="timeZone" [(ngModel)]="settings.timeZone" placeholder="UTC"></label>
-    <label>Catalogue mode<select name="channelPoolMode" [(ngModel)]="settings.channelPoolMode"><option value="paidSubscriptions">Paid subscriptions</option><option value="followedChannels">Followed channels</option></select></label>
     <label>Live polling seconds<input name="twitchPollSeconds" type="number" min="30" max="300" [(ngModel)]="settings.twitchPollSeconds"></label>
     <label>Browser polling seconds<input name="browserPollSeconds" type="number" min="5" max="120" [(ngModel)]="settings.browserPollSeconds"></label>
     <label>Session duration hours<input name="sessionDurationHours" type="number" min="1" max="24" [(ngModel)]="settings.sessionDurationHours"></label>
   </div><label class="check"><input name="keepAwake" type="checkbox" [(ngModel)]="settings.keepAwake"> Keep device awake while playing</label>
   <label class="check"><input name="autoMaximiseStream" type="checkbox" [(ngModel)]="settings.autoMaximiseStream"> Auto-maximise stream</label>
-  <label class="check"><input name="randomDiscoveryEnabled" type="checkbox" [(ngModel)]="settings.randomDiscoveryEnabled"> Use random live discovery when scheduled channels are offline</label>
   <label>Maximise mode<select name="maximiseMode" [(ngModel)]="settings.maximiseMode"><option value="theatre">Theatre</option><option value="fullscreen">Native fullscreen when available</option></select></label></section>
-  <section class="panel"><div class="section-head"><div><h2>Daily schedule</h2><p>Each time tries selected followed channels in order, then the automatic fallbacks.</p></div><button class="secondary" type="button" (click)="addSlot()">Add trigger time</button></div>
+  </fieldset>
+  <button class="primary" type="submit" [disabled]="!canSaveSettings">Save playback settings</button>
+  </form>
+  <form (ngSubmit)="saveSchedule()">
+  <fieldset class="schedule-fields" [disabled]="!canSaveSchedule">
+  <section class="panel"><div class="section-head"><div><h2>Daily schedule</h2><p>Each time tries selected followed channels in order, then a live channel you follow.</p></div><button class="secondary" type="button" (click)="addSlot()">Add trigger time</button></div>
     <div class="slot" *ngFor="let slot of editableSlots; let i = index">
       <div class="slot-fields"><label class="check"><input [name]="'enabled-' + slot.id" type="checkbox" [(ngModel)]="slot.enabled"> Enabled</label><label>Trigger time<input [name]="'time-' + slot.id" type="time" [(ngModel)]="slot.startTime"></label></div>
       <div class="ordered"><h3>Ordered followed channels</h3><ol class="channel-list">
@@ -28,6 +30,7 @@
       <div class="slot-actions"><button type="button" (click)="moveSlot(i, -1)" [disabled]="i === 0" aria-label="Move trigger up">↑</button><button type="button" (click)="moveSlot(i, 1)" [disabled]="i === editableSlots.length - 1" aria-label="Move trigger down">↓</button><button type="button" class="danger" (click)="removeSlot(i)">Delete trigger</button></div>
     </div>
     <p *ngIf="editableSlots.length === 0" class="empty">Add at least one trigger time before starting playback.</p>
-  </section><button class="primary" type="submit" [disabled]="!canSave">Save settings</button>
+  </section>
   </fieldset>
-</form>
+  <button class="primary" type="submit" [disabled]="!canSaveSchedule">Save schedule</button>
+  </form>
