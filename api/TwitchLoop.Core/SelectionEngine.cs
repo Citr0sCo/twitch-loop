@@ -15,11 +15,15 @@ public sealed class SelectionEngine
         bool twitchWideComplete,
         string? excludedChannel)
     {
+        var configuredLogins = priorityChannels
+            .Where(login => !ScheduleChannels.IsAutomaticFallback(login))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var login in priorityChannels)
         {
             if (string.Equals(login, ScheduleChannels.AnyFollowing, StringComparison.OrdinalIgnoreCase))
             {
-                var following = Live(followingCandidates);
+                var following = Live(followingCandidates).Where(candidate => !configuredLogins.Contains(candidate.Login)).ToList();
                 if (following.Count > 0) return PickOrKeep(following, excludedChannel, SelectionTier.Personal, "any_following_live");
                 if (!followingComplete) return new SelectionResult(null, null, "any_following_status_unknown");
                 continue;

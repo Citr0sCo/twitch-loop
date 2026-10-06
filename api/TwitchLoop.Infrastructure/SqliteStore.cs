@@ -5,7 +5,7 @@ using TwitchLoop.Core;
 
 namespace TwitchLoop.Infrastructure;
 
-public sealed record StoredSession(string Id, string State, string? Channel, string AutomationMode, int Revision, DateTimeOffset StartedAt, DateTimeOffset ExpiresAt);
+public sealed record StoredSession(string Id, string State, string? Channel, string AutomationMode, string? SelectionTier, int Revision, DateTimeOffset StartedAt, DateTimeOffset ExpiresAt);
 public sealed record StoredConnection(string? TwitchUserId, string EncryptedAccessToken, string EncryptedRefreshToken, string Scopes, DateTimeOffset ExpiresAt);
 
 public sealed class SqliteStore
@@ -38,7 +38,7 @@ public sealed class SqliteStore
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, json TEXT NOT NULL, source TEXT NOT NULL, content_hash TEXT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS schedule (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, json TEXT NOT NULL, source TEXT NOT NULL, updated_at TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, state TEXT NOT NULL, channel TEXT NULL, automation_mode TEXT NOT NULL, revision INTEGER NOT NULL, started_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, state TEXT NOT NULL, channel TEXT NULL, automation_mode TEXT NOT NULL, selection_tier TEXT NULL, revision INTEGER NOT NULL, started_at TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS twitch_connection (id INTEGER PRIMARY KEY CHECK (id = 1), twitch_user_id TEXT NULL, encrypted_access_token TEXT NOT NULL, encrypted_refresh_token TEXT NOT NULL, scopes TEXT NOT NULL, expires_at TEXT NOT NULL, validated_at TEXT NULL);
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -47,6 +47,12 @@ public sealed class SqliteStore
             if (Convert.ToInt32(await schemaCommand.ExecuteScalarAsync(cancellationToken)) == 0)
             {
                 schemaCommand.CommandText = "ALTER TABLE twitch_connection ADD COLUMN twitch_user_id TEXT NULL";
+                await schemaCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+            schemaCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'selection_tier'";
+            if (Convert.ToInt32(await schemaCommand.ExecuteScalarAsync(cancellationToken)) == 0)
+            {
+                schemaCommand.CommandText = "ALTER TABLE sessions ADD COLUMN selection_tier TEXT NULL";
                 await schemaCommand.ExecuteNonQueryAsync(cancellationToken);
             }
         }
@@ -96,14 +102,14 @@ public sealed class SqliteStore
     public async Task<StoredSession> CreateSessionAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var session = new StoredSession(Guid.NewGuid().ToString("N"), "waiting", null, "auto", 1, now, now.AddHours(settings.SessionDurationHours));
+        var session = new StoredSession(Guid.NewGuid().ToString("N"), "waiting", null, "auto", null, 1, now, now.AddHours(settings.SessionDurationHours));
         await gate.WaitAsync(cancellationToken);
         try
         {
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "INSERT INTO sessions (id,state,channel,automation_mode,revision,started_at,expires_at) VALUES ($id,$state,$channel,$mode,$revision,$started,$expires)";
+            command.CommandText = "INSERT INTO sessions (id,state,channel,automation_mode,selection_tier,revision,started_at,expires_at) VALUES ($id,$state,$channel,$mode,$tier,$revision,$started,$expires)";
             AddSessionParameters(command, session);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return session;
@@ -167,11 +173,11 @@ public sealed class SqliteStore
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT id,state,channel,automation_mode,revision,started_at,expires_at FROM sessions WHERE id = $id";
+            command.CommandText = "SELECT id,state,channel,automation_mode,selection_tier,revision,started_at,expires_at FROM sessions WHERE id = $id";
             command.Parameters.AddWithValue("$id", id);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)) return null;
-            return new StoredSession(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.GetInt32(4), DateTimeOffset.Parse(reader.GetString(5)), DateTimeOffset.Parse(reader.GetString(6)));
+            return new StoredSession(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), DateTimeOffset.Parse(reader.GetString(6)), DateTimeOffset.Parse(reader.GetString(7)));
         }
         finally { gate.Release(); }
     }
@@ -184,11 +190,11 @@ public sealed class SqliteStore
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT id,state,channel,automation_mode,revision,started_at,expires_at FROM sessions WHERE expires_at > $now AND state <> 'stopped' AND automation_mode = 'auto'";
+            command.CommandText = "SELECT id,state,channel,automation_mode,selection_tier,revision,started_at,expires_at FROM sessions WHERE expires_at > $now AND state <> 'stopped' AND automation_mode = 'auto'";
             command.Parameters.AddWithValue("$now", now.ToString("O"));
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             var sessions = new List<StoredSession>();
-            while (await reader.ReadAsync(cancellationToken)) sessions.Add(new StoredSession(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.GetInt32(4), DateTimeOffset.Parse(reader.GetString(5)), DateTimeOffset.Parse(reader.GetString(6))));
+            while (await reader.ReadAsync(cancellationToken)) sessions.Add(new StoredSession(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), DateTimeOffset.Parse(reader.GetString(6)), DateTimeOffset.Parse(reader.GetString(7))));
             return sessions;
         }
         finally { gate.Release(); }
@@ -210,7 +216,7 @@ public sealed class SqliteStore
         finally { gate.Release(); }
     }
 
-    public async Task<StoredSession?> UpdateSessionAsync(string id, string action, string? channel, CancellationToken cancellationToken)
+    public async Task<StoredSession?> UpdateSessionAsync(string id, string action, string? channel, CancellationToken cancellationToken, string? selectionTier = null)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -220,28 +226,29 @@ public sealed class SqliteStore
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "SELECT state,channel,automation_mode,revision,started_at,expires_at FROM sessions WHERE id = $id";
+            command.CommandText = "SELECT state,channel,automation_mode,selection_tier,revision,started_at,expires_at FROM sessions WHERE id = $id";
             command.Parameters.AddWithValue("$id", id);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken)) return null;
-            var current = new StoredSession(id, reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetString(2), reader.GetInt32(3), DateTimeOffset.Parse(reader.GetString(4)), DateTimeOffset.Parse(reader.GetString(5)));
+            var current = new StoredSession(id, reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetInt32(4), DateTimeOffset.Parse(reader.GetString(5)), DateTimeOffset.Parse(reader.GetString(6)));
             await reader.DisposeAsync();
             var next = action switch
             {
-                "stop" => current with { State = "stopped", Channel = null, Revision = current.Revision + 1 },
+                "stop" => current with { State = "stopped", Channel = null, SelectionTier = null, Revision = current.Revision + 1 },
                 "pauseAuto" => current with { AutomationMode = "paused", Revision = current.Revision + 1 },
                 "resumeAuto" => current with { AutomationMode = "auto", Revision = current.Revision + 1 },
-                "autoSelect" when !string.IsNullOrWhiteSpace(channel) => current with { State = "playing", Channel = channel.Trim(), AutomationMode = "auto", Revision = current.Revision + 1 },
-                "autoSelect" => current with { State = "waiting", Channel = null, AutomationMode = "auto", Revision = current.Revision + 1 },
-                "selectChannel" when !string.IsNullOrWhiteSpace(channel) => current with { State = "selected", Channel = channel.Trim(), AutomationMode = "manual", Revision = current.Revision + 1 },
+                "autoSelect" when !string.IsNullOrWhiteSpace(channel) => current with { State = "playing", Channel = channel.Trim(), AutomationMode = "auto", SelectionTier = selectionTier, Revision = current.Revision + 1 },
+                "autoSelect" => current with { State = "waiting", Channel = null, AutomationMode = "auto", SelectionTier = null, Revision = current.Revision + 1 },
+                "selectChannel" when !string.IsNullOrWhiteSpace(channel) => current with { State = "selected", Channel = channel.Trim(), AutomationMode = "manual", SelectionTier = "manual", Revision = current.Revision + 1 },
                 _ => current
             };
             command.Parameters.Clear();
-            command.CommandText = "UPDATE sessions SET state=$state,channel=$channel,automation_mode=$mode,revision=$revision WHERE id=$id";
+            command.CommandText = "UPDATE sessions SET state=$state,channel=$channel,automation_mode=$mode,selection_tier=$tier,revision=$revision WHERE id=$id";
             command.Parameters.AddWithValue("$id", id);
             command.Parameters.AddWithValue("$state", next.State);
             command.Parameters.AddWithValue("$channel", (object?)next.Channel ?? DBNull.Value);
             command.Parameters.AddWithValue("$mode", next.AutomationMode);
+            command.Parameters.AddWithValue("$tier", (object?)next.SelectionTier ?? DBNull.Value);
             command.Parameters.AddWithValue("$revision", next.Revision);
             await command.ExecuteNonQueryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -290,6 +297,7 @@ public sealed class SqliteStore
         command.Parameters.AddWithValue("$state", session.State);
         command.Parameters.AddWithValue("$channel", (object?)session.Channel ?? DBNull.Value);
         command.Parameters.AddWithValue("$mode", session.AutomationMode);
+        command.Parameters.AddWithValue("$tier", (object?)session.SelectionTier ?? DBNull.Value);
         command.Parameters.AddWithValue("$revision", session.Revision);
         command.Parameters.AddWithValue("$started", session.StartedAt.ToString("O"));
         command.Parameters.AddWithValue("$expires", session.ExpiresAt.ToString("O"));

@@ -47,6 +47,7 @@ public sealed class SessionWorkerTests
             var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
             Assert.That(updated?.State, Is.EqualTo("playing"));
             Assert.That(updated?.Channel, Is.EqualTo("followedlive"));
+            Assert.That(updated?.SelectionTier, Is.EqualTo("any-following"));
         }
         finally
         {
@@ -83,6 +84,7 @@ public sealed class SessionWorkerTests
 
             var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
             Assert.That(updated?.Channel, Is.EqualTo("first"));
+            Assert.That(updated?.SelectionTier, Is.EqualTo("priority"));
             Assert.That(priorityStatus.Snapshot.Channels.Select(channel => channel.Login), Is.EqualTo(new[] { "first", "second" }));
             Assert.That(priorityStatus.Snapshot.Channels.All(channel => channel.IsLive), Is.True);
         }
@@ -118,6 +120,7 @@ public sealed class SessionWorkerTests
 
             var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
             Assert.That(updated?.Channel, Is.EqualTo("global_live"));
+            Assert.That(updated?.SelectionTier, Is.EqualTo("any"));
         }
         finally
         {

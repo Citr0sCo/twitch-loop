@@ -44,6 +44,41 @@ public sealed class SqliteStoreTests
     }
 
     [Test]
+    public async Task ExistingSessionSchemaMigratesAndPersistsSelectionTier()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await using (var connection = new SqliteConnection($"Data Source={Path.Combine(directory, "twitch-loop.db")}"))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "CREATE TABLE sessions (id TEXT PRIMARY KEY, state TEXT NOT NULL, channel TEXT NULL, automation_mode TEXT NOT NULL, revision INTEGER NOT NULL, started_at TEXT NOT NULL, expires_at TEXT NOT NULL)";
+                await command.ExecuteNonQueryAsync();
+            }
+
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:DataDirectory"] = directory
+            }).Build();
+            var store = new SqliteStore(configuration);
+            await store.InitializeAsync();
+            var session = await store.CreateSessionAsync(await store.GetSettingsAsync(CancellationToken.None), CancellationToken.None);
+            var updated = await store.UpdateSessionAsync(session.Id, "autoSelect", "followed", CancellationToken.None, "any-following");
+            var loaded = await store.GetSessionAsync(session.Id, CancellationToken.None);
+
+            Assert.That(updated?.SelectionTier, Is.EqualTo("any-following"));
+            Assert.That(loaded?.SelectionTier, Is.EqualTo("any-following"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+
+    [Test]
     public async Task ScheduleRoundTripPreservesOrderedPriorityChannels()
     {
         var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
