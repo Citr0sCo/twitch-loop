@@ -67,20 +67,31 @@ public sealed class SqliteStore
         return settings;
     }
 
-    public async Task<IReadOnlyList<ScheduleSlot>> GetScheduleAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> GetScheduleAsync(CancellationToken cancellationToken)
     {
         var stored = await ReadJsonAsync("SELECT json FROM schedule WHERE id = 1", cancellationToken);
-        var slots = stored is null
-            ? [new ScheduleSlot("default", true, new TimeOnly(0, 0), Array.Empty<string>())]
-            : JsonSerializer.Deserialize<List<ScheduleSlot>>(stored, JsonOptions) ?? [];
-        return slots.Select(slot => slot with { Channels = ScheduleChannels.Normalize(slot.Channels) }).ToArray();
+        if (stored is null) return ScheduleChannels.Normalize(Array.Empty<string>());
+
+        using var document = JsonDocument.Parse(stored);
+        if (document.RootElement.ValueKind == JsonValueKind.Array && document.RootElement.EnumerateArray().FirstOrDefault().ValueKind == JsonValueKind.Object)
+        {
+            var legacySlots = JsonSerializer.Deserialize<List<LegacyScheduleSlot>>(stored, JsonOptions) ?? [];
+            var migrated = legacySlots.Where(slot => slot.Enabled)
+                .OrderBy(slot => slot.StartTime)
+                .SelectMany(slot => slot.Channels);
+            return ScheduleChannels.Normalize(migrated);
+        }
+
+        return ScheduleChannels.Normalize(JsonSerializer.Deserialize<List<string>>(stored, JsonOptions) ?? []);
     }
 
-    public async Task SaveScheduleAsync(IReadOnlyList<ScheduleSlot> slots, int version, string source, CancellationToken cancellationToken)
+    public async Task SaveScheduleAsync(IReadOnlyList<string> channels, int version, string source, CancellationToken cancellationToken)
     {
-        var normalized = slots.Select(slot => slot with { Channels = ScheduleChannels.Normalize(slot.Channels) }).ToArray();
+        var normalized = ScheduleChannels.Normalize(channels);
         await WriteJsonAsync("schedule", version + 1, JsonSerializer.Serialize(normalized, JsonOptions), source, cancellationToken);
     }
+
+    private sealed record LegacyScheduleSlot(string Id, bool Enabled, TimeOnly StartTime, IReadOnlyList<string> Channels);
 
     public async Task<StoredSession> CreateSessionAsync(AppSettings settings, CancellationToken cancellationToken)
     {

@@ -44,7 +44,7 @@ public sealed class SqliteStoreTests
     }
 
     [Test]
-    public async Task ScheduleRoundTripPreservesOrderedChannelFallbacks()
+    public async Task ScheduleRoundTripPreservesOrderedPriorityChannels()
     {
         var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -56,14 +56,11 @@ public sealed class SqliteStoreTests
             }).Build();
             var store = new SqliteStore(configuration);
             await store.InitializeAsync();
-            await store.SaveScheduleAsync(new[]
-            {
-                new TwitchLoop.Core.ScheduleSlot("morning", true, new TimeOnly(7, 0), new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing })
-            }, 1, "test", CancellationToken.None);
+            await store.SaveScheduleAsync(new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing }, 1, "test", CancellationToken.None);
 
             var stored = await store.GetScheduleAsync(CancellationToken.None);
 
-            Assert.That(stored.Single().Channels, Is.EqualTo(new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing }));
+            Assert.That(stored, Is.EqualTo(new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing, TwitchLoop.Core.ScheduleChannels.Any }));
         }
         finally
         {
@@ -71,9 +68,8 @@ public sealed class SqliteStoreTests
         }
     }
 
-
     [Test]
-    public async Task AppTimeZoneRemainsEnvironmentConfigurationRatherThanAnAppSetting()
+    public async Task ExistingTimedScheduleMigratesToChronologicalPriorityList()
     {
         var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -81,14 +77,23 @@ public sealed class SqliteStoreTests
         {
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["App:DataDirectory"] = directory,
-                ["APP_TIMEZONE"] = "America/Toronto"
+                ["App:DataDirectory"] = directory
             }).Build();
             var store = new SqliteStore(configuration);
             await store.InitializeAsync();
-            var settings = await store.GetSettingsAsync(CancellationToken.None);
+            await using (var connection = new SqliteConnection($"Data Source={Path.Combine(directory, "twitch-loop.db")}"))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "INSERT INTO schedule (id,version,json,source,updated_at) VALUES (1,1,$json,'test',$updated)";
+                command.Parameters.AddWithValue("$json", """[{"id":"late","enabled":true,"startTime":"18:00","channels":["night"]},{"id":"early","enabled":true,"startTime":"07:00","channels":["day"]}]""");
+                command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+                await command.ExecuteNonQueryAsync();
+            }
 
-            Assert.That(settings.GetType().GetProperty("TimeZone"), Is.Null);
+            var stored = await store.GetScheduleAsync(CancellationToken.None);
+
+            Assert.That(stored, Is.EqualTo(new[] { "day", "night", TwitchLoop.Core.ScheduleChannels.AnyFollowing, TwitchLoop.Core.ScheduleChannels.Any }));
         }
         finally
         {

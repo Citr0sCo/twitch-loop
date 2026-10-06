@@ -42,7 +42,7 @@ public sealed class SessionWorkerTests
 
             await worker.EvaluateImmediatelyAsync(CancellationToken.None);
             Assert.That(workerLogger.LastException, Is.Null);
-            Assert.That(handler.Paths, Is.EqualTo(new[] { "/helix/channels/followed", "/helix/streams" }));
+            Assert.That(handler.Paths, Is.EqualTo(new[] { "/helix/channels/followed", "/helix/streams", "/helix/streams" }));
 
             var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
             Assert.That(updated?.State, Is.EqualTo("playing"));
@@ -54,8 +54,79 @@ public sealed class SessionWorkerTests
         }
     }
 
-    private sealed class TwitchResponseHandler : HttpMessageHandler
+    [Test]
+    public async Task EvaluationSwitchesFromLiveLowerPriorityToLiveTopPriority()
     {
+        var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:DataDirectory"] = directory,
+                ["TWITCH_CLIENT_ID"] = "test-client"
+            }).Build();
+            var store = new SqliteStore(configuration);
+            var tokens = new TokenStore(new PassthroughProtectionProvider());
+            await store.InitializeAsync();
+            await store.SaveConnectionAsync("user-id", tokens.Protect("access"), tokens.Protect("refresh"), "scopes", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+            await store.SaveScheduleAsync(["first", "second"], 1, "test", CancellationToken.None);
+            var session = await store.CreateSessionAsync(await store.GetSettingsAsync(CancellationToken.None), CancellationToken.None);
+            await store.UpdateSessionAsync(session.Id, "autoSelect", "second", CancellationToken.None);
+            var handler = new TwitchResponseHandler("""[{"id":"1","user_id":"1","user_login":"first","user_name":"First","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"},{"id":"2","user_id":"2","user_login":"second","user_name":"Second","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
+            using var httpClient = new HttpClient(handler);
+            var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
+            var worker = new SessionWorker(store, twitch, tokens, new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
+
+            await worker.EvaluateImmediatelyAsync(CancellationToken.None);
+
+            var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
+            Assert.That(updated?.Channel, Is.EqualTo("first"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task EvaluationUsesTwitchWideFallbackWhenNoConfiguredOrFollowedStreamIsLive()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:DataDirectory"] = directory,
+                ["TWITCH_CLIENT_ID"] = "test-client"
+            }).Build();
+            var store = new SqliteStore(configuration);
+            var tokens = new TokenStore(new PassthroughProtectionProvider());
+            await store.InitializeAsync();
+            await store.SaveConnectionAsync("user-id", tokens.Protect("access"), tokens.Protect("refresh"), "scopes", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+            var session = await store.CreateSessionAsync(await store.GetSettingsAsync(CancellationToken.None), CancellationToken.None);
+            var handler = new TwitchResponseHandler("""[{"id":"global","user_id":"2","user_login":"global_live","user_name":"Global Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
+            using var httpClient = new HttpClient(handler);
+            var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
+            var worker = new SessionWorker(store, twitch, tokens, new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
+
+            await worker.EvaluateImmediatelyAsync(CancellationToken.None);
+
+            var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
+            Assert.That(updated?.Channel, Is.EqualTo("global_live"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+
+
+    private sealed class TwitchResponseHandler(string? streamsJson = null) : HttpMessageHandler
+    {
+        private readonly string streamPayload = streamsJson ?? """[{"id":"stream-1","user_id":"1","user_login":"followedlive","user_name":"Followed Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""";
         public List<string> Paths { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -63,7 +134,7 @@ public sealed class SessionWorkerTests
             Paths.Add(request.RequestUri!.AbsolutePath);
             var body = request.RequestUri!.AbsolutePath.EndsWith("/channels/followed", StringComparison.Ordinal)
                 ? """{"data":[{"broadcaster_id":"1","broadcaster_login":"followedlive","broadcaster_name":"Followed Live","followed_at":"2026-10-05T12:00:00Z"}],"pagination":{}}"""
-                : """{"data":[{"id":"stream-1","user_id":"1","user_login":"followedlive","user_name":"Followed Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]}""";
+                : $$"""{"data":{{streamPayload}}}""";
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")

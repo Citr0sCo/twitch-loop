@@ -1,16 +1,16 @@
 # Twitch Loop
 
-<p align="center"><strong>Daily schedules. Automatic fallbacks. Keep watching.</strong></p>
+<p align="center"><strong>Live priorities. Automatic fallbacks. Keep watching.</strong></p>
 
-A self-hosted Twitch player with daily schedules and automatic live-channel fallbacks. Twitch Loop uses the official Twitch embedded player and keeps one browser player instance while the backend evaluates the next channel.
+A self-hosted Twitch player with an always-on ordered list of preferred streams and automatic live-channel fallbacks. Twitch Loop uses the official Twitch embedded player and keeps one browser player instance while the backend checks stream status every minute.
 
 > Twitch Loop is independent open-source software and is not affiliated with Twitch.
 
 ## Features
 
-- One daily template in an IANA time zone with ordered channel fallbacks.
-- Paid-subscription and followed-channel catalogue modes, with manual candidate support.
-- Bounded personal and Twitch-wide discovery fallbacks; unknown upstream state never becomes offline.
+- One always-on ordered list of Twitch channels, evaluated once per minute.
+- Automatic priority handoff to the first live configured channel, then any followed streamer, then any live Twitch streamer.
+- Followed-channel selection plus manual Twitch login entry; unknown upstream state never becomes offline.
 - Independent browser playback sessions with start, stop, auto-pause, manual selection and reset controls.
 - Official Twitch player SDK integration, theatre mode, best-effort native fullscreen and Screen Wake Lock.
 - SQLite persistence under `/data`, protected ASP.NET data-protection keys, health checks and a single-container deployment.
@@ -34,7 +34,7 @@ For a published-image deployment, copy `examples/docker-compose.yml` and use a m
 
 ## Configuration
 
-Settings are stored in SQLite and edited from the Settings page. Playback preferences, polling intervals, session duration, discovery behavior, and the daily schedule do not need to be supplied through `.env`. Set `APP_TIMEZONE` in `.env` to override the schedule time zone; it defaults to `Europe/London`. The environment file is otherwise reserved for hosting and Twitch OAuth configuration; see `.env.example` for the variables.
+Settings are stored in SQLite and edited from the Settings page. Playback preferences, browser polling interval, session duration, and the ordered stream priority list do not need to be supplied through `.env`. The backend checks Twitch live status every 60 seconds. The environment file is reserved for hosting and Twitch OAuth configuration; see `.env.example` for the variables.
 
 `APP_ALLOWED_OWNER_TWITCH_LOGIN` configures the single Twitch login allowed to connect. The callback compares the authenticated Twitch login returned by Twitch case-insensitively and rejects other accounts. Twitch tokens never go to Angular or logs, and the OAuth callback uses a short-lived browser-bound state value.
 
@@ -44,10 +44,10 @@ The implementation follows the compatible parts of `Citr0sCo/home-app` and `Citr
 
 ```text
 api/TwitchLoop.Api/            HTTP endpoints, cookie/OAuth gate, hosting
-api/TwitchLoop.Core/           schedule evaluation and fallback selection
+api/TwitchLoop.Core/           stream priority and fallback selection
 api/TwitchLoop.Infrastructure/SQLite, Twitch client, protected token utilities
 src/twitch-loop-web/           Angular connect, watch and settings routes
-tests/TwitchLoop.Core.Tests/   deterministic schedule/selection tests
+tests/TwitchLoop.Core.Tests/   deterministic priority selection tests
 deploy/                        generic JSON configuration example
 ```
 
@@ -77,4 +77,4 @@ Docker validation:
 docker build --platform linux/amd64 -t twitch-loop .
 ```
 
-The acceptance suite should additionally exercise real OAuth, Twitch API rate headers, DST boundaries, multi-browser sessions and audible handoffs in current Chrome, Edge, Firefox, Safari and iPad Safari. Browser autoplay, third-party cookie restrictions and Wake Lock are capability-dependent; this project does not promise background playback, ad-free playback or uninterrupted locked-device execution.
+The acceptance suite should additionally exercise real OAuth, Twitch API rate headers, multi-browser sessions and audible handoffs in current Chrome, Edge, Firefox, Safari and iPad Safari. Browser autoplay, third-party cookie restrictions and Wake Lock are capability-dependent; this project does not promise background playback, ad-free playback or uninterrupted locked-device execution.

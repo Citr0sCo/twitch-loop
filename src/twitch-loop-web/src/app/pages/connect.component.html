@@ -1,7 +1,7 @@
 <section class="connect-card" aria-labelledby="connect-title">
   <p class="eyebrow">Self-hosted Twitch player</p>
   <h1 id="connect-title">Keep watching what matters.</h1>
-  <p class="lede">Configure a daily viewing schedule, then let Twitch Loop move through live fallbacks when a stream ends.</p>
+  <p class="lede">Configure an ordered list of Twitch channels, then let Twitch Loop switch to the highest-priority live stream.</p>
   <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
   <div *ngIf="status?.setupRequired" class="notice" role="status"><strong>Setup required.</strong> Add the Twitch client ID, client secret, exact callback URL, and allowed owner Twitch login to the server environment before connecting.</div>
   <button class="primary" type="button" (click)="connect()" [disabled]="status?.setupRequired">Connect with Twitch</button>
