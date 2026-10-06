@@ -92,6 +92,25 @@ describe('SettingsComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.channel-list li.automatic').length).toBe(2);
   });
 
+  it('shows origin failure details from the followed-channel endpoint', async () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/settings').flush(settings);
+    http.expectOne('/api/schedule').flush({ version: 1, channels: ['any-following', 'any'] });
+    http.expectOne('/api/channels/following').flush({
+      detail: 'The origin web server returned an invalid or incomplete response to Cloudflare.',
+      what_you_should_do: '**Wait and retry.** Back off for at least 60 seconds.'
+    }, { status: 502, statusText: 'Bad Gateway' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.notice.error').textContent).toContain('Could not load followed channels.');
+    expect(fixture.nativeElement.querySelector('.notice.error').textContent).toContain('The origin web server returned an invalid or incomplete response to Cloudflare.');
+    expect(fixture.nativeElement.querySelector('.notice.error').textContent).toContain('Back off for at least 60 seconds.');
+    fixture.destroy();
+  });
+
   it('shows origin failure details and allows retry when settings cannot load', async () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();

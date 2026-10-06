@@ -7,14 +7,14 @@
   </section>
 
   <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
-  <div *ngIf="message" class="notice" role="status">{{ message }}</div>
+  <div *ngIf="message" class="notice warning" role="status">{{ message }}</div>
 
   <div #playerAnchor class="player-anchor">
     <div class="player-shell" [class.theatre]="theatre" [class.corner-player]="cornerPlayer">
       <div id="twitch-player" class="player"></div>
     </div>
   </div>
-  <div *ngIf="!playerPlaying" class="playback-status notice" role="status" aria-live="polite">
+  <div *ngIf="!playerPlaying" class="playback-status notice" [class.info]="!!session?.channel && !playbackBlocked" role="status" aria-live="polite">
     <strong>{{ playbackBlocked ? 'Autoplay needs a click' : playbackState }}</strong>
     <span>{{ playbackMessage }}</span>
     <button *ngIf="playbackBlocked" class="primary" type="button" (click)="playFromGesture()">Play stream</button>
@@ -52,15 +52,15 @@
     <ol>
       <li *ngFor="let channel of priorityStatus.channels" [class.current]="session?.channel?.toLowerCase() === channel.login.toLowerCase()">
         <span class="channel-name">{{ channel.login }}</span>
+        <span *ngIf="playerPlaying && session?.channel?.toLowerCase() === channel.login.toLowerCase()" class="playing-indicator">Currently playing</span>
         <span class="channel-state" [class.live]="channelDisplayState(channel) === 'live'" [class.offline]="channelDisplayState(channel) === 'offline'">
           {{ channelDisplayState(channel) === 'live' ? 'Live' : channelDisplayState(channel) === 'offline' ? 'Offline' : 'Checking' }}
         </span>
-        <span *ngIf="playerPlaying && session?.channel?.toLowerCase() === channel.login.toLowerCase()" class="playing-indicator">Currently playing</span>
       </li>
       <li *ngIf="isFallbackStream" class="current fallback-channel">
         <span class="fallback-channel-name"><span class="channel-name">{{ session?.channel }}</span><small>{{ fallbackDescription }}</small></span>
-        <span class="channel-state live">Live</span>
         <span *ngIf="playerPlaying" class="playing-indicator">Currently playing</span>
+        <span class="channel-state live">Live</span>
       </li>
     </ol>
     <p *ngIf="!priorityStatus.channels.length && !isFallbackStream" class="empty-priorities">No configured stream priorities. Add channels in Settings.</p>

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -87,7 +88,11 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
         var clientId = configuration["TWITCH_CLIENT_ID"];
         if (string.IsNullOrWhiteSpace(clientId)) return new([], false, "setup_required");
         var follows = new List<TwitchFollow>();
+        var stopwatch = Stopwatch.StartNew();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
         string? cursor = null;
+        var pagesRetrieved = 0;
         try
         {
             for (var page = 0; page < 100; page++)
@@ -97,23 +102,29 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
                 using var request = new HttpRequestMessage(HttpMethod.Get, query);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 request.Headers.Add("Client-Id", clientId);
-                using var response = await httpClient.SendAsync(request, cancellationToken);
+                using var response = await httpClient.SendAsync(request, timeout.Token);
                 if (!response.IsSuccessStatusCode)
                 {
-                    logger.LogWarning("Twitch followed channels request returned {StatusCode}", response.StatusCode);
+                    logger.LogWarning("Twitch followed channels request returned {StatusCode} on page {Page} after {ElapsedMilliseconds} ms", response.StatusCode, page + 1, stopwatch.ElapsedMilliseconds);
                     return new([], false, $"http_{(int)response.StatusCode}");
                 }
-                var payload = await response.Content.ReadFromJsonAsync<FollowsResponse>(cancellationToken: cancellationToken);
+                var payload = await response.Content.ReadFromJsonAsync<FollowsResponse>(cancellationToken: timeout.Token);
                 if (payload is null) return new([], false, "invalid_response");
                 follows.AddRange(payload.Data);
+                pagesRetrieved++;
                 cursor = payload.Pagination?.GetValueOrDefault("cursor");
                 if (string.IsNullOrWhiteSpace(cursor)) return new(follows, true);
             }
             return new([], false, "pagination_limit");
         }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Twitch followed channels request timed out after {ElapsedMilliseconds} ms with {PagesRetrieved} pages retrieved", stopwatch.ElapsedMilliseconds, pagesRetrieved);
+            return new([], false, "timeout");
+        }
         catch (HttpRequestException exception)
         {
-            logger.LogWarning(exception, "Twitch followed channels request failed");
+            logger.LogWarning(exception, "Twitch followed channels request failed after {ElapsedMilliseconds} ms with {PagesRetrieved} pages retrieved", stopwatch.ElapsedMilliseconds, pagesRetrieved);
             return new([], false, "network_error");
         }
     }
