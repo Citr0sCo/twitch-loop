@@ -22,6 +22,31 @@ public sealed class TwitchApiClientTests
     }
 
     [Test]
+    public async Task RefreshAccessTokenUsesTwitchOAuthAndReturnsRotatedCredentials()
+    {
+        var handler = new TokenRefreshHandler();
+        using var httpClient = new HttpClient(handler);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TWITCH_CLIENT_ID"] = "test-client",
+                ["TWITCH_CLIENT_SECRET"] = "test-secret"
+            })
+            .Build();
+        var client = new TwitchApiClient(httpClient, configuration, Microsoft.Extensions.Logging.Abstractions.NullLogger<TwitchApiClient>.Instance);
+
+        var result = await client.RefreshAccessTokenAsync("old-refresh-token", CancellationToken.None);
+
+        Assert.That(result.Tokens, Is.Not.Null);
+        Assert.That(result.Tokens!.AccessToken, Is.EqualTo("fresh-access-token"));
+        Assert.That(result.Tokens.RefreshToken, Is.EqualTo("rotated-refresh-token"));
+        Assert.That(result.Tokens.ExpiresAt, Is.GreaterThan(DateTimeOffset.UtcNow));
+        Assert.That(handler.RequestUri?.ToString(), Is.EqualTo("https://id.twitch.tv/oauth2/token"));
+        Assert.That(handler.RequestBody, Does.Contain("grant_type=refresh_token"));
+        Assert.That(handler.RequestBody, Does.Contain("refresh_token=old-refresh-token"));
+    }
+
+    [Test]
     public async Task FollowedChannelTimeoutReturnsAnIncompleteResult()
     {
         var handler = new BlockingHandler();
@@ -51,6 +76,25 @@ public sealed class TwitchApiClientTests
         await client.GetStreamsAsync([], "access-token", CancellationToken.None);
 
         Assert.That(handler.Queries, Is.EqualTo(new[] { "?first=100&user_login=first_login&user_login=second", "?first=100" }));
+    }
+
+    private sealed class TokenRefreshHandler : HttpMessageHandler
+    {
+        public Uri? RequestUri { get; private set; }
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"access_token\":\"fresh-access-token\",\"refresh_token\":\"rotated-refresh-token\",\"expires_in\":3600}",
+                    System.Text.Encoding.UTF8,
+                    "application/json")
+            };
+        }
     }
 
     private sealed class BlockingHandler : HttpMessageHandler

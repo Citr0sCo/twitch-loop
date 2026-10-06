@@ -25,6 +25,7 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
             var connection = await store.GetConnectionAsync(timeout.Token);
             if (connection is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
             var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
+            var refreshToken = tokens.Unprotect(connection.EncryptedRefreshToken);
             var twitchUserId = connection.TwitchUserId;
             if (string.IsNullOrWhiteSpace(twitchUserId))
             {
@@ -37,6 +38,30 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
 
             phase = "Twitch followed-channel lookup";
             var result = await twitch.GetFollowedChannelsAsync(twitchUserId, accessToken, timeout.Token);
+            if (!result.Complete && result.Error == "http_401")
+            {
+                phase = "Twitch token refresh";
+                var refresh = await twitch.RefreshAccessTokenAsync(refreshToken, timeout.Token);
+                if (refresh.Tokens is null)
+                {
+                    logger.LogWarning("Twitch access token refresh failed after a followed-channel 401; refresh endpoint status {StatusCode}", refresh.FailureStatusCode);
+                    return Problem("Twitch authorization expired or could not be refreshed. Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+                }
+
+                accessToken = refresh.Tokens.AccessToken;
+                await store.SaveConnectionAsync(
+                    twitchUserId,
+                    tokens.Protect(refresh.Tokens.AccessToken),
+                    tokens.Protect(refresh.Tokens.RefreshToken),
+                    connection.Scopes,
+                    refresh.Tokens.ExpiresAt,
+                    timeout.Token);
+                phase = "Twitch followed-channel retry";
+                result = await twitch.GetFollowedChannelsAsync(twitchUserId, accessToken, timeout.Token);
+                if (!result.Complete && result.Error == "http_401")
+                    return Problem("Twitch still rejects the refreshed authorization. Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+            }
+
             if (!result.Complete)
             {
                 logger.LogWarning("Following channels request failed during {Phase} after {ElapsedMilliseconds} ms: {Error}", phase, stopwatch.ElapsedMilliseconds, result.Error);
