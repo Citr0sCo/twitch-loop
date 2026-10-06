@@ -38,7 +38,7 @@ public sealed class SessionWorkerTests
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
             var workerLogger = new CapturingLogger<SessionWorker>();
-            var worker = new SessionWorker(store, twitch, tokens, new SystemClock(), new SystemRandomSource(), workerLogger);
+            var worker = new SessionWorker(store, twitch, tokens, new PriorityStatusCache(), new SystemClock(), new SystemRandomSource(), workerLogger);
 
             await worker.EvaluateImmediatelyAsync(CancellationToken.None);
             Assert.That(workerLogger.LastException, Is.Null);
@@ -76,12 +76,15 @@ public sealed class SessionWorkerTests
             var handler = new TwitchResponseHandler("""[{"id":"1","user_id":"1","user_login":"first","user_name":"First","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"},{"id":"2","user_id":"2","user_login":"second","user_name":"Second","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
-            var worker = new SessionWorker(store, twitch, tokens, new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
+            var priorityStatus = new PriorityStatusCache();
+            var worker = new SessionWorker(store, twitch, tokens, priorityStatus, new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
 
             await worker.EvaluateImmediatelyAsync(CancellationToken.None);
 
             var updated = await store.GetSessionAsync(session.Id, CancellationToken.None);
             Assert.That(updated?.Channel, Is.EqualTo("first"));
+            Assert.That(priorityStatus.Snapshot.Channels.Select(channel => channel.Login), Is.EqualTo(new[] { "first", "second" }));
+            Assert.That(priorityStatus.Snapshot.Channels.All(channel => channel.IsLive), Is.True);
         }
         finally
         {
@@ -109,7 +112,7 @@ public sealed class SessionWorkerTests
             var handler = new TwitchResponseHandler("""[{"id":"global","user_id":"2","user_login":"global_live","user_name":"Global Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
-            var worker = new SessionWorker(store, twitch, tokens, new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
+            var worker = new SessionWorker(store, twitch, tokens, new PriorityStatusCache(), new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
 
             await worker.EvaluateImmediatelyAsync(CancellationToken.None);
 

@@ -8,6 +8,8 @@ export interface Settings { version: number; keepAwake: boolean; autoMaximiseStr
 export interface ScheduleResponse { version: number; channels: string[]; }
 export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
+export interface PriorityChannelStatus { login: string; isLive: boolean | null; }
+export interface PriorityStatus { channels: PriorityChannelStatus[]; checkedAt: string | null; }
 export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +21,7 @@ export class ApiService {
   schedule(): Observable<ScheduleResponse> { return this.http.get<ScheduleResponse>('/api/schedule'); }
   saveSchedule(schedule: ScheduleResponse): Observable<ScheduleResponse> { return this.http.put<ScheduleResponse>('/api/schedule', schedule); }
   following(): Observable<FollowingResponse> { return this.http.get<FollowingResponse>('/api/channels/following'); }
+  priorityStatus(): Observable<PriorityStatus> { return this.http.get<PriorityStatus>('/api/channels/priority-status'); }
   logout(): Observable<void> { return this.http.post<void>('/api/auth/logout', {}); }
   startSession(): Observable<SessionState> { return this.http.post<SessionState>('/api/sessions', {}); }
   currentSession(id: string): Observable<SessionState> { return this.http.get<SessionState>(`/api/sessions/${encodeURIComponent(id)}/current-stream`); }

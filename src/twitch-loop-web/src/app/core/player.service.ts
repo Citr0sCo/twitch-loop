@@ -10,22 +10,30 @@ interface TwitchPlayerInstance {
   destroy(): void;
 }
 
+interface TwitchPlayerConstructor {
+  new (element: string, options: Record<string, unknown>): TwitchPlayerInstance;
+  PLAYING: string;
+}
+
 declare global {
-  interface Window { Twitch?: { Player: new (element: string, options: Record<string, unknown>) => TwitchPlayerInstance; }; }
+  interface Window { Twitch?: { Player: TwitchPlayerConstructor; }; }
 }
 
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private player: TwitchPlayerInstance | null = null;
   private loaded: Promise<void> | null = null;
+  private onPlaying: (() => void) | null = null;
 
   async mount(elementId: string, channel: string): Promise<void> {
     await this.loadSdk();
     this.player?.destroy();
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
     this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: true });
+    this.player.addEventListener(window.Twitch.Player.PLAYING, () => this.onPlaying?.());
   }
 
+  setOnPlaying(callback: (() => void) | null): void { this.onPlaying = callback; }
   setChannel(channel: string): void { this.player?.setChannel(channel); }
   setVolume(volume: number): void { this.player?.setVolume(volume); }
   setMuted(muted: boolean): void { this.player?.setMuted(muted); }

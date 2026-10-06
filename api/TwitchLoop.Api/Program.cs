@@ -34,6 +34,7 @@ builder.Services.AddHttpClient<TwitchApiClient>(client => client.Timeout = TimeS
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SqliteStore>();
 builder.Services.AddSingleton<TokenStore>();
+builder.Services.AddSingleton<PriorityStatusCache>();
 builder.Services.AddSingleton<TwitchLoop.Core.IClock, TwitchLoop.Core.SystemClock>();
 builder.Services.AddSingleton<TwitchLoop.Core.IRandomSource, TwitchLoop.Core.SystemRandomSource>();
 builder.Services.AddSingleton<SessionWorker>();

@@ -31,6 +31,20 @@ public sealed class ScheduleAndSelectionTests
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Priority));
     }
 
+    [TestCase("second", "second")]
+    [TestCase("third", "second")]
+    public void KeepsHighestPriorityLiveConfiguredChannel(string current, string expected)
+    {
+        var result = Select(
+            ["first", "second", "third", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Offline), Candidate("second", LiveStatus.Live), Candidate("third", LiveStatus.Live)],
+            [],
+            [],
+            current: current);
+
+        Assert.That(result.Channel, Is.EqualTo(expected));
+    }
+
     [Test]
     public void FallsBackToAnyLiveFollowedChannelBeforeTwitchWideChannels()
     {
