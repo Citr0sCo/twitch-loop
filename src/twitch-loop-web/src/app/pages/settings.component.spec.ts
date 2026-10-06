@@ -70,6 +70,11 @@ describe('SettingsComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
+    const removeButton = fixture.nativeElement.querySelector('.remove-channel') as HTMLButtonElement;
+    expect(removeButton.querySelector('svg')).not.toBeNull();
+    expect(removeButton.textContent.trim()).toBe('');
+    expect(removeButton.getAttribute('aria-label')).toBe('Remove Alpha Channel from priorities');
+
     const component = fixture.componentInstance;
     component.moveChannel(0, 1);
     component.addChannel('new_channel');
@@ -85,6 +90,33 @@ describe('SettingsComponent', () => {
 
     expect(fixture.nativeElement.querySelectorAll('.channel-list li').length).toBe(5);
     expect(fixture.nativeElement.querySelectorAll('.channel-list li.automatic').length).toBe(2);
+  });
+
+  it('shows origin failure details and allows retry when settings cannot load', async () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/settings').flush({
+      detail: 'The origin web server returned an invalid or incomplete response to Cloudflare.',
+      what_you_should_do: '**Wait and retry.** Back off for at least 60 seconds.'
+    }, { status: 502, statusText: 'Bad Gateway' });
+    http.expectOne('/api/schedule').flush({ version: 1, channels: ['any-following', 'any'] });
+    http.expectOne('/api/channels/following').flush({ data: [], complete: true });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Could not load settings.');
+    expect(fixture.nativeElement.textContent).toContain('The origin web server returned an invalid or incomplete response to Cloudflare.');
+    expect(fixture.nativeElement.textContent).toContain('Wait and retry. Back off for at least 60 seconds.');
+    expect(fixture.nativeElement.textContent).not.toContain('**');
+    expect(fixture.nativeElement.querySelector('.settings-fields').disabled).toBeTrue();
+
+    (fixture.nativeElement.querySelector('section.notice.error button') as HTMLButtonElement).click();
+    http.expectOne('/api/settings').flush(settings);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.settingsLoaded).toBeTrue();
+    fixture.destroy();
   });
 
   it('keeps schedule editing locked if priority data fails to load', async () => {

@@ -106,6 +106,21 @@ small {
   flex-wrap: wrap;
   gap: 0.3rem;
 }
+.channel-actions .remove-channel {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0.55rem;
+}
+.channel-actions .remove-channel svg {
+  fill: none;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 1rem;
+}
 .automatic {
   color: #b9a1ff;
 }

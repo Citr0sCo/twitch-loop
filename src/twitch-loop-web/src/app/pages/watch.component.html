@@ -39,14 +39,6 @@
         <svg *ngIf="!theatre" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M7 8h10v8H7z" /></svg>
         <svg *ngIf="theatre" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M4 4l6 6m10-6-6 6m-4 4-6 6m10-6 6 6" /></svg>{{ theatre ? 'Exit theatre' : 'Theatre mode' }}
       </button>
-      <span class="wake-lock-pill" role="status" [class.active]="wakeLockStatus === 'active'" [class.available]="wakeLockStatus === 'available'" [class.unavailable]="wakeLockStatus === 'unavailable'" title="Keep this page visible for the most reliable handoffs." [attr.aria-label]="'Wake Lock ' + wakeLockStatus + '. Keep this page visible for the most reliable handoffs.'">
-        Wake Lock
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <ng-container *ngIf="wakeLockStatus === 'active'"><path d="m5 12 4 4L19 6" /></ng-container>
-          <ng-container *ngIf="wakeLockStatus === 'available'"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-1 .7-1.5 1.1-1.5 2.5M12 17h.01" /></ng-container>
-          <ng-container *ngIf="wakeLockStatus === 'unavailable'"><path d="M18 6 6 18M6 6l12 12" /></ng-container>
-        </svg>
-      </span>
     </div>
   </section>
 
@@ -54,14 +46,14 @@
     <div class="section-heading">
       <div>
         <h2 id="priority-heading">Configured stream priorities</h2>
-        <p *ngIf="priorityStatus.checkedAt">Last checked {{ formatLastChecked() }}</p>
       </div>
+      <p *ngIf="priorityStatus.checkedAt" class="last-refreshed">Last refreshed {{ formatLastChecked() }}</p>
     </div>
     <ol>
       <li *ngFor="let channel of priorityStatus.channels" [class.current]="session?.channel?.toLowerCase() === channel.login.toLowerCase()">
         <span class="channel-name">{{ channel.login }}</span>
-        <span class="channel-state" [class.live]="channel.isLive === true" [class.offline]="channel.isLive === false">
-          {{ channel.isLive === true ? 'Live' : channel.isLive === false ? 'Offline' : 'Checking' }}
+        <span class="channel-state" [class.live]="channelDisplayState(channel) === 'live'" [class.offline]="channelDisplayState(channel) === 'offline'">
+          {{ channelDisplayState(channel) === 'live' ? 'Live' : channelDisplayState(channel) === 'offline' ? 'Offline' : 'Checking' }}
         </span>
         <span *ngIf="playerPlaying && session?.channel?.toLowerCase() === channel.login.toLowerCase()" class="playing-indicator">Currently playing</span>
       </li>

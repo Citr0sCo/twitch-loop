@@ -6,6 +6,19 @@ import { ApiService, FollowingChannel, ScheduleResponse, Settings } from '../cor
 const ANY_FOLLOWING = 'any-following';
 const ANY = 'any';
 
+function describeApiError(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null || !('error' in error)) return fallback;
+  const body = (error as { error?: unknown }).error;
+  if (typeof body !== 'object' || body === null) return fallback;
+  const problem = body as { detail?: unknown; what_you_should_do?: unknown };
+  const explanation = [problem.detail, problem.what_you_should_do]
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.replace(/\*\*/g, '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return explanation ? `${fallback} ${explanation}` : fallback;
+}
+
 @Component({ selector: 'tl-settings', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './settings.component.html', styleUrl: './settings.component.scss' })
 export class SettingsComponent implements OnInit {
   private readonly api = inject(ApiService);
@@ -41,7 +54,7 @@ export class SettingsComponent implements OnInit {
     this.loadSchedule();
     this.api.following().subscribe({
       next: response => { this.following = [...response.data].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })); this.changeDetector.markForCheck(); },
-      error: error => { this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.'; this.changeDetector.markForCheck(); }
+      error: error => { this.error = describeApiError(error, 'Could not load followed channels.'); this.changeDetector.markForCheck(); }
     });
   }
 
@@ -61,10 +74,10 @@ export class SettingsComponent implements OnInit {
         this.settingsLoaded = true;
         this.changeDetector.markForCheck();
       },
-      error: () => {
+      error: error => {
         this.settingsLoading = false;
         this.settingsLoaded = false;
-        this.settingsError = 'Could not load settings.';
+        this.settingsError = describeApiError(error, 'Could not load settings.');
         this.changeDetector.markForCheck();
       }
     });
@@ -87,10 +100,10 @@ export class SettingsComponent implements OnInit {
         this.scheduleLoaded = true;
         this.changeDetector.markForCheck();
       },
-      error: () => {
+      error: error => {
         this.scheduleLoading = false;
         this.scheduleLoaded = false;
-        this.scheduleError = 'Could not load the priority list.';
+        this.scheduleError = describeApiError(error, 'Could not load the priority list.');
         this.changeDetector.markForCheck();
       }
     });
