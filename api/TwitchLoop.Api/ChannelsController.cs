@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TwitchLoop.Infrastructure;
@@ -7,7 +8,7 @@ namespace TwitchLoop.Api;
 [ApiController]
 [Authorize]
 [Route("api/channels")]
-public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store, TokenStore tokens, TimeZoneInfo timeZone) : ControllerBase
+public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store, TokenStore tokens, TimeZoneInfo timeZone, ILogger<ChannelsController> logger) : ControllerBase
 {
     [HttpGet]
     public IActionResult Get() => Ok(new { data = Array.Empty<object>(), complete = false, message = "Connect with Twitch to build the catalogue." });
@@ -15,24 +16,45 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
     [HttpGet("following")]
     public async Task<IActionResult> Following(CancellationToken cancellationToken)
     {
-        var connection = await store.GetConnectionAsync(cancellationToken);
-        if (connection is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
-        var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
-        var twitchUserId = connection.TwitchUserId;
-        if (string.IsNullOrWhiteSpace(twitchUserId))
+        var stopwatch = Stopwatch.StartNew();
+        var phase = "connection lookup";
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        try
         {
-            var identity = await twitch.GetCurrentUserAsync(accessToken, cancellationToken);
-            if (identity is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
-            twitchUserId = identity.Id;
-            await store.SaveConnectionAsync(identity.Id, connection.EncryptedAccessToken, connection.EncryptedRefreshToken, connection.Scopes, connection.ExpiresAt, cancellationToken);
+            var connection = await store.GetConnectionAsync(timeout.Token);
+            if (connection is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+            var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
+            var twitchUserId = connection.TwitchUserId;
+            if (string.IsNullOrWhiteSpace(twitchUserId))
+            {
+                phase = "Twitch identity lookup";
+                var identity = await twitch.GetCurrentUserAsync(accessToken, timeout.Token);
+                if (identity is null) return Problem("Reconnect with Twitch to load followed channels.", statusCode: StatusCodes.Status409Conflict);
+                twitchUserId = identity.Id;
+                await store.SaveConnectionAsync(identity.Id, connection.EncryptedAccessToken, connection.EncryptedRefreshToken, connection.Scopes, connection.ExpiresAt, timeout.Token);
+            }
+
+            phase = "Twitch followed-channel lookup";
+            var result = await twitch.GetFollowedChannelsAsync(twitchUserId, accessToken, timeout.Token);
+            if (!result.Complete)
+            {
+                logger.LogWarning("Following channels request failed during {Phase} after {ElapsedMilliseconds} ms: {Error}", phase, stopwatch.ElapsedMilliseconds, result.Error);
+                return Problem("Twitch followed channels could not be loaded. Try again shortly.", statusCode: StatusCodes.Status502BadGateway);
+            }
+
+            logger.LogInformation("Loaded {ChannelCount} followed channels in {ElapsedMilliseconds} ms", result.Data.Count, stopwatch.ElapsedMilliseconds);
+            return Ok(new
+            {
+                data = result.Data.Select(channel => new { id = channel.BroadcasterId, login = channel.BroadcasterLogin, name = channel.BroadcasterName }),
+                complete = result.Complete
+            });
         }
-        var result = await twitch.GetFollowedChannelsAsync(twitchUserId, accessToken, cancellationToken);
-        if (!result.Complete) return Problem("Twitch followed channels could not be loaded.", statusCode: StatusCodes.Status502BadGateway);
-        return Ok(new
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            data = result.Data.Select(channel => new { id = channel.BroadcasterId, login = channel.BroadcasterLogin, name = channel.BroadcasterName }),
-            complete = result.Complete
-        });
+            logger.LogWarning(exception, "Following channels request timed out during {Phase} after {ElapsedMilliseconds} ms", phase, stopwatch.ElapsedMilliseconds);
+            return Problem("Loading followed channels timed out. Try again shortly.", statusCode: StatusCodes.Status504GatewayTimeout);
+        }
     }
 
 

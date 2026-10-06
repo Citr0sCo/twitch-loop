@@ -38,6 +38,8 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .control-buttons { align-items: center; display: flex; flex-wrap: wrap; gap: .65rem; }
 .notice { border-radius: .4rem; margin: 1rem 0; padding: .8rem 1rem; }
 .notice.error { background: #35202a; border: 1px solid #d95d75; }
+.notice.warning { background: #3d3216; border: 1px solid #b8872d; color: #ffe29a; }
+.notice.info { background: #192c41; border: 1px solid #4f8fc9; color: #c6e2ff; }
 @media (max-width: 600px) {
   .page-heading { align-items: start; flex-direction: column; }
   .section-heading { align-items: start; flex-direction: column; }

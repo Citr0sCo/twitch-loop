@@ -22,6 +22,22 @@ public sealed class TwitchApiClientTests
     }
 
     [Test]
+    public async Task FollowedChannelTimeoutReturnsAnIncompleteResult()
+    {
+        var handler = new BlockingHandler();
+        using var httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(50) };
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["TWITCH_CLIENT_ID"] = "test-client" })
+            .Build();
+        var client = new TwitchApiClient(httpClient, configuration, Microsoft.Extensions.Logging.Abstractions.NullLogger<TwitchApiClient>.Instance);
+
+        var result = await client.GetFollowedChannelsAsync("user-id", "access-token", CancellationToken.None);
+
+        Assert.That(result.Complete, Is.False);
+        Assert.That(result.Error, Is.EqualTo("timeout"));
+    }
+
+    [Test]
     public async Task StreamRequestsIncludePriorityLoginsAndHundredItemLimitInQuery()
     {
         var handler = new CapturingHandler();
@@ -35,6 +51,15 @@ public sealed class TwitchApiClientTests
         await client.GetStreamsAsync([], "access-token", CancellationToken.None);
 
         Assert.That(handler.Queries, Is.EqualTo(new[] { "?first=100&user_login=first_login&user_login=second", "?first=100" }));
+    }
+
+    private sealed class BlockingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+        }
     }
 
     private sealed class CapturingHandler : HttpMessageHandler

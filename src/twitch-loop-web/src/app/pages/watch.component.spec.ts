@@ -66,6 +66,7 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('session_started');
     expect(fixture.nativeElement.querySelector('.player-shell .player-placeholder')).toBeNull();
     expect(fixture.nativeElement.querySelector('.playback-status')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.playback-status').classList.contains('info')).toBeTrue();
     expect(fixture.nativeElement.querySelector('aside')).toBeNull();
     const selectedPriority = fixture.nativeElement.querySelector('.channel-priorities li.current') as HTMLElement;
     expect(selectedPriority.querySelector('.channel-state')?.textContent).toContain('Checking');
@@ -74,6 +75,8 @@ describe('WatchComponent', () => {
     expect(fixture.componentInstance.session?.state).toBe('playing');
     expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Currently playing');
+    fixture.detectChanges();
+    expect(Array.from(selectedPriority.children).map(child => child.className)).toEqual(['channel-name', 'playing-indicator', 'channel-state live']);
     expect(fixture.nativeElement.textContent).toContain('Offline');
     expect(fixture.nativeElement.textContent).toContain('Live');
     expect(fixture.nativeElement.querySelector('.channel-priorities .section-heading .now-playing')).toBeNull();
@@ -84,6 +87,39 @@ describe('WatchComponent', () => {
     fixture.destroy();
   });
 
+
+  it('highlights local API waits in amber and clears the warning after recovery', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'waiting-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
+    const waiting = {
+      sessionId: 'waiting-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    };
+    http.expectOne('/api/sessions/waiting-session/current-stream').flush(waiting);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.playback-status').classList.contains('info')).toBeFalse();
+
+    (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
+    http.expectOne('/api/sessions/waiting-session/current-stream').flush('Unavailable', { status: 502, statusText: 'Bad Gateway' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const warning = fixture.nativeElement.querySelector('.notice.warning') as HTMLElement;
+    expect(warning.textContent).toContain('Waiting for the local API…');
+    expect(warning.getAttribute('role')).toBe('status');
+
+    (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
+    http.expectOne('/api/sessions/waiting-session/current-stream').flush(waiting);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
+    fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+  });
 
   it('shows a followed-stream fallback row, Twitch chat, and configured 24-hour checked time', async () => {
     sessionStorage.setItem('twitch-loop-session', 'fallback-session');

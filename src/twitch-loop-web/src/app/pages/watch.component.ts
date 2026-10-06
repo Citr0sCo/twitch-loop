@@ -190,6 +190,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private apply(state: SessionState): void {
     if (state.revision < this.lastRevision) return;
+    this.message = '';
     const changed = state.channel !== this.session?.channel;
     if (changed) {
       this.playerPlaying = false;
