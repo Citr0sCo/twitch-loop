@@ -13,6 +13,7 @@ interface TwitchPlayerInstance {
 interface TwitchPlayerConstructor {
   new (element: string, options: Record<string, unknown>): TwitchPlayerInstance;
   PLAYING: string;
+  PLAYBACK_BLOCKED: string;
 }
 
 declare global {
@@ -24,6 +25,7 @@ export class PlayerService {
   private player: TwitchPlayerInstance | null = null;
   private loaded: Promise<void> | null = null;
   private onPlaying: (() => void) | null = null;
+  private onPlaybackBlocked: (() => void) | null = null;
 
   async mount(elementId: string, channel: string): Promise<void> {
     await this.loadSdk();
@@ -31,9 +33,11 @@ export class PlayerService {
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
     this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: true });
     this.player.addEventListener(window.Twitch.Player.PLAYING, () => this.onPlaying?.());
+    this.player.addEventListener(window.Twitch.Player.PLAYBACK_BLOCKED, () => this.onPlaybackBlocked?.());
   }
 
   setOnPlaying(callback: (() => void) | null): void { this.onPlaying = callback; }
+  setOnPlaybackBlocked(callback: (() => void) | null): void { this.onPlaybackBlocked = callback; }
   setChannel(channel: string): void { this.player?.setChannel(channel); }
   setVolume(volume: number): void { this.player?.setVolume(volume); }
   setMuted(muted: boolean): void { this.player?.setMuted(muted); }

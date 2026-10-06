@@ -12,12 +12,10 @@
 
 <div class="player-shell" [class.theatre]="theatre">
   <div id="twitch-player" class="player"></div>
-  <div *ngIf="!playerPlaying" class="player-placeholder" role="status">
-    <strong *ngIf="session?.channel">Connecting to {{ session.channel }}…</strong>
-    <strong *ngIf="session?.state === 'waiting'">Waiting for a live candidate</strong>
-    <strong *ngIf="!session">Ready to start</strong>
-    <strong *ngIf="session?.state === 'stopped'">Playback stopped</strong>
-    <span>{{ session?.reason || 'Start playback to check your priority list.' }}</span>
+  <div *ngIf="!playerPlaying" class="player-placeholder">
+    <strong role="status" aria-live="polite">{{ playbackBlocked ? 'Autoplay needs a click' : playbackState }}</strong>
+    <span>{{ playbackMessage }}</span>
+    <button *ngIf="playbackBlocked" class="primary" type="button" (click)="playFromGesture()">Play stream</button>
   </div>
 </div>
 
