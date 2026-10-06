@@ -18,7 +18,7 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_URLS=http://+:80 \
     APP__DATADIRECTORY=/data
 EXPOSE 80
-RUN apt-get update && apt-get install --yes --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends curl tzdata && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /app/publish ./
 COPY --from=angular-build /web-gui/dist/twitch-loop-web/browser ./wwwroot
 RUN mkdir -p /data/keys && chown -R 1654:1654 /app /data

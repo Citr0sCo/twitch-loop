@@ -59,6 +59,20 @@ public sealed class ScheduleAndSelectionTests
         Assert.That(result.Reason, Is.EqualTo("any_following_live"));
     }
 
+
+    [Test]
+    public void AnyFollowingFallbackExcludesExplicitlyConfiguredChannels()
+    {
+        var result = Select(
+            ["configured", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("configured", LiveStatus.Offline)],
+            [Candidate("configured", LiveStatus.Live), Candidate("followed", LiveStatus.Live)],
+            [Candidate("global", LiveStatus.Live)]);
+
+        Assert.That(result.Channel, Is.EqualTo("followed"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Personal));
+    }
+
     [Test]
     public void FallsBackToAnyLiveTwitchChannelWhenNoFollowedChannelsAreLive()
     {

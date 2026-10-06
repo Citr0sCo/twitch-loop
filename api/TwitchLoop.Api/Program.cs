@@ -4,6 +4,14 @@ using Microsoft.AspNetCore.DataProtection;
 using TwitchLoop.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+var timeZoneId = builder.Configuration["APP_TIMEZONE"] ?? "Europe/London";
+TimeZoneInfo timeZone;
+try { timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId); }
+catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
+{
+    throw new InvalidOperationException($"APP_TIMEZONE '{timeZoneId}' is not a valid system time zone.", exception);
+}
+builder.Services.AddSingleton(timeZone);
 var dataDirectory = builder.Configuration["App:DataDirectory"] ?? "/data";
 Directory.CreateDirectory(dataDirectory);
 
@@ -55,7 +63,7 @@ if (app.Environment.IsDevelopment())
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/; script-src 'self' https://player.twitch.tv 'sha256-LMY6wYoFV9I4wWzxaq1N/dTpl4iurQktw706UCHK3vM='; connect-src 'self' https://api.twitch.tv; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
+    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/ https://www.twitch.tv https://www.twitch.tv/; script-src 'self' https://player.twitch.tv 'sha256-LMY6wYoFV9I4wWzxaq1N/dTpl4iurQktw706UCHK3vM='; connect-src 'self' https://api.twitch.tv; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
     await next();
 });
 app.UseStaticFiles();

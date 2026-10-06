@@ -4,12 +4,14 @@
 h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .status { background: #3a303d; border-radius: 999px; color: #d2c5de; padding: .4rem .8rem; text-transform: capitalize; }
 .status.live, .channel-state.live { background: #153d2b; color: #8ae1ad; }
-.player-shell { aspect-ratio: 16 / 9; background: #000; border-radius: .6rem; min-height: 260px; overflow: hidden; position: relative; }
-.player-shell.theatre { aspect-ratio: auto; height: min(70vh, 720px); }
+.player-shell { aspect-ratio: 16 / 9; background: #000; border-radius: .6rem; min-height: 300px; overflow: hidden; position: relative; }
+.player-shell.theatre { aspect-ratio: auto; border-radius: 0; height: 90vh; height: 90dvh; inset: 0 0 auto; position: fixed; width: 100vw; z-index: 1000; }
 .player { height: 100%; width: 100%; }
-.player-placeholder { align-items: center; background: #09090bf0; color: #d4d4d8; display: flex; flex-direction: column; gap: .5rem; inset: 0; justify-content: center; pointer-events: none; position: absolute; text-align: center; z-index: 1; }
-.player-placeholder span { color: #aaaab0; }
-.player-placeholder button { pointer-events: auto; }
+.theatre-exit-bar { align-items: center; background: #0e0e10; border-top: 1px solid #333; bottom: 0; display: flex; height: 10vh; height: 10dvh; justify-content: center; position: fixed; width: 100vw; z-index: 1001; }
+.theatre-exit-bar button { font-size: clamp(.75rem, 2vh, 1rem); padding: clamp(.2rem, .8vh, .6rem) clamp(.5rem, 2vw, 1rem); }
+.playback-status { align-items: flex-start; display: flex; flex-direction: column; gap: .4rem; }
+.playback-status span { color: #aaaab0; }
+.playback-status button { pointer-events: auto; }
 .panel { background: #18181b; border: 1px solid #2a2a2e; border-radius: .6rem; margin-top: 1rem; padding: 1rem; }
 .section-heading { align-items: center; display: flex; gap: 1rem; justify-content: space-between; }
 .section-heading h2 { font-size: 1.1rem; margin: 0; }
@@ -18,6 +20,11 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .channel-priorities ol { margin: .8rem 0 0; padding-left: 1.75rem; }
 .channel-priorities li { align-items: center; border-top: 1px solid #303035; display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr) auto auto; padding: .75rem .5rem; }
 .channel-priorities li.current { background: #211c2d; }
+.fallback-channel-name { display: flex; flex-direction: column; gap: .25rem; }
+.fallback-channel-name small { color: #aaaab0; font-size: .75rem; }
+.live-chat iframe { border: 0; display: block; height: clamp(300px, 60vh, 700px); width: 100%; }
+.live-chat h2 { font-size: 1.1rem; margin: 0 0 .8rem; }
+
 .channel-name { font-weight: 600; }
 .channel-state { background: #30232a; border-radius: 999px; color: #e1a0ad; font-size: .8rem; padding: .25rem .6rem; }
 .channel-state.offline { background: #29292d; color: #aaaab0; }

@@ -48,7 +48,7 @@ public sealed class SessionsController(SqliteStore store, SessionWorker sessionW
     private static object ToResponse(StoredSession session, TwitchLoop.Core.AppSettings settings) => new
     {
         sessionId = session.Id, revision = session.Revision, state = session.State, automationMode = session.AutomationMode, channel = session.Channel,
-        selectionTier = session.Channel is null ? null : session.AutomationMode == "manual" ? "manual" : "automatic",
+        selectionTier = session.Channel is null ? null : session.SelectionTier,
         reason = session.State == "waiting" ? "awaiting_fresh_live_status" : "session_started", statusFreshness = "unknown",
         pollAfterSeconds = settings.BrowserPollSeconds, settingsVersion = settings.Version, expiresAt = session.ExpiresAt
     };

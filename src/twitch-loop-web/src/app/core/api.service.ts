@@ -9,7 +9,7 @@ export interface ScheduleResponse { version: number; channels: string[]; }
 export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
 export interface PriorityChannelStatus { login: string; isLive: boolean | null; }
-export interface PriorityStatus { channels: PriorityChannelStatus[]; checkedAt: string | null; }
+export interface PriorityStatus { channels: PriorityChannelStatus[]; checkedAt: string | null; timeZone: string; }
 export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
 
 @Injectable({ providedIn: 'root' })

@@ -1,5 +1,6 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { EMPTY, Subscription, catchError, interval, startWith, switchMap } from 'rxjs';
 import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
@@ -12,13 +13,16 @@ export class WatchComponent implements OnInit, OnDestroy {
   private readonly player = inject(PlayerService);
   private readonly wakeLock = inject(WakeLockService);
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly document = inject(DOCUMENT);
+  private readonly sanitizer = inject(DomSanitizer);
   private pollSubscription: Subscription | null = null;
   private statusSubscription: Subscription | null = null;
   private pendingChannel: string | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   session: SessionState | null = null;
-  priorityStatus: PriorityStatus = { channels: [], checkedAt: null };
+  chatEmbedUrl: SafeResourceUrl | null = null;
+  priorityStatus: PriorityStatus = { channels: [], checkedAt: null, timeZone: 'Europe/London' };
   playerPlaying = false;
   playbackBlocked = false;
   manualChannel = '';
@@ -36,12 +40,32 @@ export class WatchComponent implements OnInit, OnDestroy {
     return this.session?.channel ? 'connecting' : this.session?.state || 'stopped';
   }
 
+  get isFallbackStream(): boolean {
+    return !!this.session?.channel && (this.session.selectionTier === 'any-following' || this.session.selectionTier === 'any');
+  }
+
+  get fallbackDescription(): string {
+    return this.session?.selectionTier === 'any-following'
+      ? 'Randomly chosen from your live followed channels'
+      : 'Randomly chosen from Twitch live channels';
+  }
+
   get playbackMessage(): string {
     if (this.playbackBlocked) return 'Your browser blocked autoplay. Press Play to start the stream. It will begin muted.';
     if (this.session?.channel) return `Connecting to ${this.session.channel}…`;
     if (this.session?.state === 'waiting') return 'Waiting for a live candidate.';
     if (this.session?.state === 'stopped') return 'Playback was stopped.';
     return 'Starting playback automatically…';
+  }
+
+  formatLastChecked(): string | null {
+    if (!this.priorityStatus.checkedAt) return null;
+    const date = new Date(this.priorityStatus.checkedAt);
+    try {
+      return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: this.priorityStatus.timeZone }).format(date);
+    } catch {
+      return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(date);
+    }
   }
 
   ngOnInit(): void {
@@ -112,14 +136,17 @@ export class WatchComponent implements OnInit, OnDestroy {
     else this.start(channel);
   }
 
-  reset(): void { this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.player.destroy(); void this.wakeLock.release(); }
   setVolume(): void { this.player.setVolume(this.volume / 100); }
   toggleMute(): void { this.muted = !this.muted; this.player.setMuted(this.muted); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
-  toggleTheatre(): void { this.theatre = !this.theatre; }
+  toggleTheatre(): void {
+    this.theatre = !this.theatre;
+    this.document.body.classList.toggle('theatre-mode', this.theatre);
+  }
   nativeFullscreen(): void { void this.player.requestFullscreen().catch(() => this.error = 'Fullscreen is unavailable for the Twitch player.'); }
 
-  ngOnDestroy(): void { this.pollSubscription?.unsubscribe(); this.statusSubscription?.unsubscribe(); this.player.setOnPlaying(null); this.player.setOnPlaybackBlocked(null); this.player.destroy(); void this.wakeLock.release(); }
+  ngOnDestroy(): void { this.document.body.classList.remove('theatre-mode'); this.pollSubscription?.unsubscribe(); this.statusSubscription?.unsubscribe(); this.player.setOnPlaying(null); this.player.setOnPlaybackBlocked(null); this.player.destroy(); void this.wakeLock.release(); }
 
   private requestChannel(sessionId: string, channel: string): void {
     this.api.sessionAction(sessionId, 'selectChannel', channel).subscribe({
@@ -186,8 +213,16 @@ export class WatchComponent implements OnInit, OnDestroy {
       this.playbackBlocked = false;
     }
     this.lastRevision = state.revision; this.session = state;
+    if (changed) this.chatEmbedUrl = state.channel ? this.createChatEmbedUrl(state.channel) : null;
     if (state.channel && changed) void this.mountOrSwitch(state.channel);
     this.changeDetector.markForCheck();
+  }
+
+
+  private createChatEmbedUrl(channel: string): SafeResourceUrl {
+    const url = new URL(`https://www.twitch.tv/embed/${encodeURIComponent(channel)}/chat`);
+    url.searchParams.set('parent', this.document.location.hostname);
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url.toString());
   }
 
   private async mountOrSwitch(channel: string): Promise<void> {

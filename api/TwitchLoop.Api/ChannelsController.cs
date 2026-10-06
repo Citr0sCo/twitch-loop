@@ -7,7 +7,7 @@ namespace TwitchLoop.Api;
 [ApiController]
 [Authorize]
 [Route("api/channels")]
-public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store, TokenStore tokens) : ControllerBase
+public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store, TokenStore tokens, TimeZoneInfo timeZone) : ControllerBase
 {
     [HttpGet]
     public IActionResult Get() => Ok(new { data = Array.Empty<object>(), complete = false, message = "Connect with Twitch to build the catalogue." });
@@ -47,7 +47,7 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
         var channels = await store.GetScheduleAsync(cancellationToken);
         var configured = channels.Where(channel => !TwitchLoop.Core.ScheduleChannels.IsAutomaticFallback(channel))
             .Select(login => new { login, isLive = liveByLogin.TryGetValue(login, out var isLive) ? (bool?)isLive : null });
-        return Ok(new { channels = configured, checkedAt = snapshot.CheckedAt });
+        return Ok(new { channels = configured, checkedAt = snapshot.CheckedAt, timeZone = timeZone.Id });
     }
 
     [HttpPost("refresh")]

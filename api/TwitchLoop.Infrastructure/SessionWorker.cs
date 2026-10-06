@@ -53,9 +53,17 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         foreach (var session in sessions)
         {
             var decision = engine.Select(priorityChannels, priorityCandidates, followingCandidates, twitchWideCandidates, followed.Complete, twitchWide.Complete, session.Channel);
-            if (decision.Channel is not null && !string.Equals(decision.Channel, session.Channel, StringComparison.OrdinalIgnoreCase))
+            var tier = decision.Tier switch
             {
-                await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken);
+                SelectionTier.Priority => "priority",
+                SelectionTier.Personal => "any-following",
+                SelectionTier.TwitchWide => "any",
+                _ => null
+            };
+            if (decision.Channel is not null &&
+                (!string.Equals(decision.Channel, session.Channel, StringComparison.OrdinalIgnoreCase) || tier != session.SelectionTier))
+            {
+                await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken, tier);
             }
             else if (decision.Channel is null && session.Channel is not null && !live.Contains(session.Channel))
             {
