@@ -1,9 +1,7 @@
 <div class="watch-page" [class.theatre-active]="theatre">
   <section class="page-heading">
     <div>
-      <p class="eyebrow">Playback</p>
-      <h1>Watch</h1>
-      <p>One official Twitch player, automatically following your live-channel priority list.</p>
+      <span *ngIf="session?.channel" class="now-playing">{{ playerPlaying ? 'Playing' : 'Switching to' }}: {{ session.channel }}</span>
     </div>
     <span class="status" [class.live]="playerPlaying">{{ playbackState }}</span>
   </section>
