@@ -17,6 +17,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
   private pollSubscription: Subscription | null = null;
   private statusSubscription: Subscription | null = null;
+  private startSubscription: Subscription | null = null;
+  private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   session: SessionState | null = null;
@@ -81,13 +83,16 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
   start(): void {
     if (this.starting) return;
+    this.clearStartRetry();
     this.starting = true;
     this.playerPlaying = false;
     this.playbackBlocked = false;
     this.error = '';
+    this.message = '';
     this.changeDetector.markForCheck();
-    this.api.startSession().subscribe({
+    this.startSubscription = this.api.startSession().subscribe({
       next: session => {
+        this.startSubscription = null;
         this.starting = false;
         sessionStorage.setItem('twitch-loop-session', session.sessionId);
         this.apply(session);
@@ -95,12 +100,35 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
         void this.wakeLock.request().then(() => this.changeDetector.markForCheck());
         this.changeDetector.markForCheck();
       },
-      error: () => {
+      error: error => {
+        this.startSubscription = null;
         this.starting = false;
-        this.error = 'Could not start a playback session. Check the server connection.';
+        if (this.isTransientApiFailure(error.status)) {
+          this.message = 'Waiting for the local API… Reconnecting in 30 seconds.';
+          this.scheduleStartRetry();
+        } else {
+          this.error = 'Could not start a playback session. Check the server connection.';
+        }
         this.changeDetector.markForCheck();
       }
     });
+  }
+
+  private isTransientApiFailure(status: number): boolean {
+    return status === 0 || status === 408 || status === 425 || status === 429 || (status >= 500 && status < 600);
+  }
+
+  private scheduleStartRetry(): void {
+    if (this.startRetryTimer !== null) return;
+    this.startRetryTimer = setTimeout(() => {
+      this.startRetryTimer = null;
+      this.start();
+    }, 30000);
+  }
+
+  private clearStartRetry(): void {
+    if (this.startRetryTimer !== null) clearTimeout(this.startRetryTimer);
+    this.startRetryTimer = null;
   }
 
   stop(): void {
@@ -120,7 +148,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  reset(): void { this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.clearStartRetry(); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
@@ -136,7 +164,30 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   @HostListener('window:resize')
   onResize(): void { this.updateCornerPlayer(); }
 
-  ngOnDestroy(): void { this.document.body.classList.remove('theatre-mode'); this.pollSubscription?.unsubscribe(); this.statusSubscription?.unsubscribe(); this.player.setOnPlaying(null); this.player.setOnPlaybackBlocked(null); this.player.destroy(); void this.wakeLock.release(); }
+  @HostListener('window:online')
+  onConnectionRestored(): void {
+    if (this.starting) return;
+    if (this.startRetryTimer !== null) {
+      this.clearStartRetry();
+      this.start();
+      return;
+    }
+    const sessionId = sessionStorage.getItem('twitch-loop-session');
+    if (sessionId) this.poll(sessionId);
+    this.pollPriorityStatus();
+  }
+
+  ngOnDestroy(): void {
+    this.document.body.classList.remove('theatre-mode');
+    this.clearStartRetry();
+    this.startSubscription?.unsubscribe();
+    this.pollSubscription?.unsubscribe();
+    this.statusSubscription?.unsubscribe();
+    this.player.setOnPlaying(null);
+    this.player.setOnPlaybackBlocked(null);
+    this.player.destroy();
+    void this.wakeLock.release();
+  }
 
   private poll(id: string): void {
     this.pollSubscription?.unsubscribe();
@@ -167,6 +218,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
 
   private pollPriorityStatus(): void {
+    this.statusSubscription?.unsubscribe();
     this.statusSubscription = interval(15000).pipe(
       startWith(0),
       switchMap(() => this.api.priorityStatus().pipe(catchError(() => EMPTY)))
