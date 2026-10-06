@@ -21,7 +21,7 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .section-heading h2 { font-size: 1.1rem; margin: 0; }
 .section-heading p { color: #929298; font-size: .8rem; margin: .35rem 0 0; }
 .now-playing, .playing-indicator { color: #b9a1ff; font-size: .85rem; font-weight: 600; }
-.channel-priorities ol { margin: .8rem 0 0; padding-left: 1.75rem; }
+.channel-priorities ol { margin: .8rem 0 0; padding-left: 0; }
 .channel-priorities li { align-items: center; border-top: 1px solid #303035; display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr) auto auto; padding: .75rem .5rem; }
 .channel-priorities li.current { background: #211c2d; }
 .fallback-channel-name { display: flex; flex-direction: column; gap: .25rem; }
