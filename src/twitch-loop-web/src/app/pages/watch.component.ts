@@ -40,6 +40,11 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     return !!this.session?.channel && (this.session.selectionTier === 'any-following' || this.session.selectionTier === 'any');
   }
 
+  get wakeLockStatus(): 'active' | 'available' | 'unavailable' {
+    if (!this.wakeLock.supported()) return 'unavailable';
+    return this.wakeLock.active() ? 'active' : 'available';
+  }
+
   get fallbackDescription(): string {
     return this.session?.selectionTier === 'any-following'
       ? 'Randomly chosen from your live followed channels'
@@ -47,7 +52,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get playbackMessage(): string {
-    if (this.playbackBlocked) return 'Your browser blocked autoplay. Press Play to start the stream. It will begin muted.';
+    if (this.playbackBlocked) return 'Your browser blocked unmuted autoplay. Press Play to start the stream with audio.';
     if (this.session?.channel) return `Connecting to ${this.session.channel}…`;
     if (this.session?.state === 'waiting') return 'Waiting for a live candidate.';
     if (this.session?.state === 'stopped') return 'Playback was stopped.';
@@ -86,7 +91,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
         sessionStorage.setItem('twitch-loop-session', session.sessionId);
         this.apply(session);
         this.poll(session.sessionId);
-        void this.wakeLock.request();
+        void this.wakeLock.request().then(() => this.changeDetector.markForCheck());
         this.changeDetector.markForCheck();
       },
       error: () => {

@@ -42,8 +42,14 @@ describe('WatchComponent', () => {
   });
 
   it('starts playback automatically on a fresh Watch visit', async () => {
+    wakeLock.request.and.callFake(() => {
+      wakeLock.active.and.returnValue(true);
+      return Promise.resolve(true);
+    });
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
+    const wakeLockPill = fixture.nativeElement.querySelector('.wake-lock-pill') as HTMLElement;
+    expect(wakeLockPill.classList.contains('available')).toBeTrue();
     const http = TestBed.inject(HttpTestingController);
     flushPriorityStatus(http, [
       { login: 'first', isLive: false },
@@ -73,6 +79,15 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Currently playing');
     expect(fixture.nativeElement.textContent).toContain('Offline');
     expect(fixture.nativeElement.textContent).toContain('Live');
+    expect(fixture.nativeElement.querySelector('.channel-priorities .section-heading .now-playing')).toBeNull();
+
+    expect(wakeLockPill.textContent.trim()).toBe('Wake Lock');
+    expect(wakeLockPill.classList.contains('active')).toBeTrue();
+    expect(wakeLockPill.getAttribute('title')).toBe('Keep this page visible for the most reliable handoffs.');
+    expect(wakeLockPill.textContent).not.toContain('Keep this page visible');
+    wakeLock.supported.and.returnValue(false);
+    expect(fixture.componentInstance.wakeLockStatus).toBe('unavailable');
+
     expect(sessionStorage.getItem('twitch-loop-session')).toBe('scheduled-session');
     fixture.destroy();
   });
@@ -162,7 +177,7 @@ describe('WatchComponent', () => {
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
     expect(exitButton.querySelector('svg')).not.toBeNull();
     const exitButtonBounds = exitButton.getBoundingClientRect();
-    expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(window.innerWidth / 2, 0);
+    expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0);
     exitButton.click();
     fixture.detectChanges();
     expect(document.body.classList.contains('theatre-mode')).toBeFalse();
@@ -218,7 +233,7 @@ describe('WatchComponent', () => {
 
     player.setOnPlaybackBlocked.calls.mostRecent().args[0]?.();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Your browser blocked autoplay');
+    expect(fixture.nativeElement.textContent).toContain('Your browser blocked unmuted autoplay');
     const playButton = fixture.nativeElement.querySelector('.playback-status button') as HTMLButtonElement;
     playButton.click();
     expect(player.play).toHaveBeenCalled();
