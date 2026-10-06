@@ -14,7 +14,7 @@
       <div id="twitch-player" class="player"></div>
     </div>
   </div>
-  <div *ngIf="!playerPlaying" class="playback-status notice" [class.info]="!!session?.channel && !playbackBlocked" role="status" aria-live="polite">
+  <div *ngIf="!playerPlaying" class="playback-status notice" [class.info]="!playbackBlocked" [class.warning]="playbackBlocked" role="status" aria-live="polite">
     <strong>{{ playbackBlocked ? 'Autoplay needs a click' : playbackState }}</strong>
     <span>{{ playbackMessage }}</span>
     <button *ngIf="playbackBlocked" class="primary" type="button" (click)="playFromGesture()">Play stream</button>
