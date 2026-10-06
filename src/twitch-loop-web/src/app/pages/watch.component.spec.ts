@@ -6,7 +6,7 @@ import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
@@ -37,6 +37,9 @@ describe('WatchComponent', () => {
     TestBed.inject(HttpTestingController).verify();
     player.mount.calls.reset();
     player.setChannel.calls.reset();
+    player.setOnPlaying.calls.reset();
+    player.setOnPlaybackBlocked.calls.reset();
+    player.play.calls.reset();
   });
 
   it('starts playback automatically on a fresh Watch visit', async () => {
@@ -59,16 +62,78 @@ describe('WatchComponent', () => {
 
     expect(player.mount).toHaveBeenCalledWith('twitch-player', 'second');
     expect(fixture.componentInstance.muted).toBeTrue();
+    expect(fixture.componentInstance.starting).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Connecting to second…');
+    expect(fixture.nativeElement.textContent).not.toContain('session_started');
     expect(fixture.nativeElement.querySelector('.player-placeholder')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('aside')).toBeNull();
     player.setOnPlaying.calls.mostRecent().args[0]?.();
-    fixture.detectChanges();
+    await fixture.whenStable();
     expect(fixture.componentInstance.session?.state).toBe('playing');
     expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Currently playing');
     expect(fixture.nativeElement.textContent).toContain('Offline');
     expect(fixture.nativeElement.textContent).toContain('Live');
     expect(sessionStorage.getItem('twitch-loop-session')).toBe('scheduled-session');
+    fixture.destroy();
+  });
+
+
+  it('automatically starts a fresh session when the saved session is stopped', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'stopped-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
+    http.expectOne('/api/sessions/stopped-session/current-stream').flush({
+      sessionId: 'stopped-session', revision: 3, state: 'stopped', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'session_stopped', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+
+    const start = http.expectOne('/api/sessions');
+    start.flush({
+      sessionId: 'new-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    http.expectOne('/api/sessions/new-session/current-stream').flush({
+      sessionId: 'new-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+
+    expect(sessionStorage.getItem('twitch-loop-session')).toBe('new-session');
+    expect(fixture.componentInstance.starting).toBeFalse();
+    expect(fixture.nativeElement.textContent).not.toContain('session_started');
+    fixture.destroy();
+  });
+
+  it('explains blocked autoplay and offers a playback gesture', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'playback-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
+    http.expectOne('/api/sessions/playback-session/current-stream').flush({
+      sessionId: 'playback-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'yogscast',
+      selectionTier: 'automatic', reason: 'session_started', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+
+    player.setOnPlaybackBlocked.calls.mostRecent().args[0]?.();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Your browser blocked autoplay');
+    const playButton = fixture.nativeElement.querySelector('.player-placeholder button') as HTMLButtonElement;
+    playButton.click();
+    expect(player.play).toHaveBeenCalled();
+
+    player.setOnPlaying.calls.mostRecent().args[0]?.();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
+    expect(fixture.componentInstance.playbackState).toBe('playing');
     fixture.destroy();
   });
 
