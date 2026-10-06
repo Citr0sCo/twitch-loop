@@ -7,7 +7,7 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .player-anchor { aspect-ratio: 16 / 9; min-height: 300px; }
 .player-shell { background: #000; border-radius: .6rem; height: 100%; overflow: hidden; position: relative; width: 100%; }
 .player-shell.theatre { aspect-ratio: auto; border-radius: 0; height: 90vh; height: 90dvh; inset: 0 0 auto; position: fixed; width: 100vw; z-index: 1000; }
-.player-shell.corner-player { aspect-ratio: auto; border: 1px solid #55555d; border-radius: .6rem; box-shadow: 0 .5rem 2rem #000b; height: 300px; inset: 1rem 1rem auto auto; min-height: 0; position: fixed; width: min(400px, 100vw); z-index: 1000; }
+.player-shell.corner-player { aspect-ratio: auto; border: 1px solid #55555d; border-radius: .6rem; box-shadow: 0 .5rem 2rem #000b; height: 226px; inset: 1rem 1rem auto auto; min-height: 0; position: fixed; width: min(400px, 100vw); z-index: 1000; }
 .player { height: 100%; width: 100%; }
 .control-buttons button { align-items: center; display: inline-flex; gap: .5rem; }
 .control-buttons svg, .theatre-exit-bar svg { fill: none; flex: none; height: 1.1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 1.1rem; }
