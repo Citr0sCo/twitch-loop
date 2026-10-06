@@ -1,6 +1,71 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "dependencyDashboard": true,
-  "packageRules": [{ "matchManagers": ["npm"], "rangeStrategy": "pin" }]
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "autodiscover": true,
+    "autodiscoverFilter": [
+        "Citr0sCo/twitch-loop"
+    ],
+    "prHourlyLimit": 2,
+    "prCreation": "immediate",
+    "extends": [
+        "config:recommended"
+    ],
+    "labels": [
+        "dependencies"
+    ],
+    "timezone": "Europe/London",
+    "enabledManagers": [
+        "npm",
+        "dockerfile",
+        "nuget"
+    ],
+    "rangeStrategy": "bump",
+    "automerge": true,
+    "automergeType": "pr",
+    "automergeStrategy": "squash",
+    "commitMessagePrefix": "chore(deps): ",
+    "commitBodyTable": true,
+    "dependencyDashboard": true,
+    "dependencyDashboardAutoclose": true,
+    "configMigration": true,
+    "platformCommit": "enabled",
+    "lockFileMaintenance": {
+        "enabled": true
+    },
+    "rebaseWhen": "behind-base-branch",
+    "patch": {
+        "groupName": "non-major dependencies",
+        "groupSlug": "minor-patch"
+    },
+    "minor": {
+        "groupName": "non-major dependencies",
+        "groupSlug": "minor-patch"
+    },
+    "vulnerabilityAlerts": {
+        "labels": [
+            "security"
+        ]
+    },
+    "major": {
+        "automerge": false,
+        "dependencyDashboardApproval": true,
+        "commitMessagePrefix": "chore(deps-major): ",
+        "labels": [
+            "dependencies",
+            "breaking"
+        ]
+    },
+    "packageRules": [
+        {
+            "matchPackageNames": [
+                "node"
+            ],
+            "enabled": false
+        },
+        {
+            "matchDepTypes": [
+                "peerDependencies"
+            ],
+            "enabled": false
+        }
+    ]
 }
