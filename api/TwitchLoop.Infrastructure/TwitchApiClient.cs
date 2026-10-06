@@ -22,6 +22,8 @@ public sealed record TwitchFollow(
     [property: JsonPropertyName("followed_at")] DateTimeOffset FollowedAt);
 public sealed record TwitchIdentity(string Id, string Login, string DisplayName, string ProfileImageUrl);
 public sealed record TwitchApiResult<T>(IReadOnlyList<T> Data, bool Complete, string? Error = null);
+public sealed record TwitchTokenRefresh(string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt);
+public sealed record TwitchTokenRefreshResult(TwitchTokenRefresh? Tokens, int? FailureStatusCode);
 
 public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration configuration, ILogger<TwitchApiClient> logger)
 {
@@ -43,6 +45,55 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
         {
             logger.LogWarning(exception, "Twitch identity request failed");
             return null;
+        }
+    }
+
+    public async Task<TwitchTokenRefreshResult> RefreshAccessTokenAsync(string? refreshToken, CancellationToken cancellationToken)
+    {
+        var clientId = configuration["TWITCH_CLIENT_ID"];
+        var clientSecret = configuration["TWITCH_CLIENT_SECRET"];
+        if (string.IsNullOrWhiteSpace(refreshToken) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+        {
+            logger.LogWarning("Twitch access token refresh is unavailable because a refresh token or OAuth client configuration is missing");
+            return new(null, null);
+        }
+
+        try
+        {
+            using var response = await httpClient.PostAsync("https://id.twitch.tv/oauth2/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = clientId,
+                ["client_secret"] = clientSecret,
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = refreshToken
+            }), cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Twitch token refresh returned {StatusCode}", (int)response.StatusCode);
+                return new(null, (int)response.StatusCode);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
+            if (payload is null || string.IsNullOrWhiteSpace(payload.AccessToken) || payload.ExpiresIn <= 0)
+            {
+                logger.LogWarning("Twitch token refresh returned an incomplete response");
+                return new(null, null);
+            }
+
+            return new(new TwitchTokenRefresh(
+                payload.AccessToken,
+                string.IsNullOrWhiteSpace(payload.RefreshToken) ? refreshToken : payload.RefreshToken,
+                DateTimeOffset.UtcNow.AddSeconds(payload.ExpiresIn)), null);
+        }
+        catch (HttpRequestException exception)
+        {
+            logger.LogWarning(exception, "Twitch token refresh request failed");
+            return new(null, null);
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            logger.LogWarning(exception, "Twitch token refresh response could not be parsed");
+            return new(null, null);
         }
     }
 
@@ -132,6 +183,11 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
     private sealed record FollowsResponse(
         [property: JsonPropertyName("data")] List<TwitchFollow> Data,
         [property: JsonPropertyName("pagination")] Dictionary<string, string>? Pagination);
+
+    private sealed record TokenResponse(
+        [property: JsonPropertyName("access_token")] string? AccessToken,
+        [property: JsonPropertyName("refresh_token")] string? RefreshToken,
+        [property: JsonPropertyName("expires_in")] int ExpiresIn);
 
     private sealed record UsersResponse([property: JsonPropertyName("data")] List<TwitchUser> Data);
     private sealed record TwitchUser(
