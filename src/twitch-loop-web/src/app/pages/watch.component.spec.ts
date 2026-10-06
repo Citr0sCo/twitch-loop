@@ -255,7 +255,7 @@ describe('WatchComponent', () => {
     expect(shell.classList.contains('corner-player')).toBeTrue();
     expect(getComputedStyle(shell).position).toBe('fixed');
     expect(getComputedStyle(shell).width).toBe('400px');
-    expect(getComputedStyle(shell).height).toBe('300px');
+    expect(getComputedStyle(shell).height).toBe('226px');
 
     anchor.style.top = '0px';
     fixture.componentInstance.onScroll();
