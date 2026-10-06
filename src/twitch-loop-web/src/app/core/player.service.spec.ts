@@ -3,10 +3,12 @@ import { PlayerService } from './player.service';
 describe('PlayerService', () => {
   const originalTwitch = window.Twitch;
   const listeners = new Map<string, () => void>();
+  let playerOptions: Record<string, unknown> | null = null;
 
   afterEach(() => {
     document.body.innerHTML = '';
     listeners.clear();
+    playerOptions = null;
     if (originalTwitch) window.Twitch = originalTwitch;
     else delete window.Twitch;
   });
@@ -16,12 +18,9 @@ describe('PlayerService', () => {
     class MockTwitchPlayer {
       static PLAYING = 'playing';
       static PLAYBACK_BLOCKED = 'playback_blocked';
-      constructor(_element: string, _options: Record<string, unknown>) {}
+      constructor(_element: string, options: Record<string, unknown>) { playerOptions = options; }
       addEventListener(event: string, callback: () => void): void { listeners.set(event, callback); }
       setChannel(): void {}
-      setVolume(): void {}
-      setMuted(): void {}
-      pause(): void {}
       play(): void {}
       destroy(): void {}
     }
@@ -38,19 +37,9 @@ describe('PlayerService', () => {
 
     expect(onPlaying).toHaveBeenCalled();
     expect(onBlocked).toHaveBeenCalled();
+    expect(playerOptions?.['autoplay']).toBeTrue();
+    expect(playerOptions?.['muted']).toBeTrue();
     service.destroy();
   });
 
-  it('requests fullscreen on the embedded Twitch iframe', async () => {
-    const player = document.createElement('div');
-    player.id = 'twitch-player';
-    const iframe = document.createElement('iframe');
-    player.appendChild(iframe);
-    document.body.appendChild(player);
-    const requestFullscreen = spyOn(iframe, 'requestFullscreen').and.resolveTo();
-
-    await new PlayerService().requestFullscreen();
-
-    expect(requestFullscreen).toHaveBeenCalled();
-  });
 });

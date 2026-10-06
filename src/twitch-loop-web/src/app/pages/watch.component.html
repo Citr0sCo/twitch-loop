@@ -11,8 +11,10 @@
   <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
   <div *ngIf="message" class="notice" role="status">{{ message }}</div>
 
-  <div class="player-shell" [class.theatre]="theatre">
-    <div id="twitch-player" class="player"></div>
+  <div #playerAnchor class="player-anchor">
+    <div class="player-shell" [class.theatre]="theatre" [class.corner-player]="cornerPlayer">
+      <div id="twitch-player" class="player"></div>
+    </div>
   </div>
   <div *ngIf="!playerPlaying" class="playback-status notice" role="status" aria-live="polite">
     <strong>{{ playbackBlocked ? 'Autoplay needs a click' : playbackState }}</strong>
@@ -22,23 +24,25 @@
 
   <section class="controls panel" aria-label="Playback controls">
     <div class="control-buttons">
-      <button class="primary" type="button" (click)="start()" [disabled]="starting || (!!session && session.state !== 'stopped')">{{ starting ? 'Starting…' : 'Start' }}</button>
-      <button class="secondary" type="button" (click)="stop()" [disabled]="!session || session.state === 'stopped'">Stop</button>
-      <button class="secondary" type="button" (click)="toggleAuto()" [disabled]="!session || session.state === 'stopped'">{{ session?.automationMode === 'paused' ? 'Resume Auto' : 'Pause Auto' }}</button>
-      <button class="secondary" type="button" (click)="reset()">Reset Session</button>
+      <button class="primary" type="button" (click)="start()" [disabled]="starting || (!!session && session.state !== 'stopped')">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" /></svg>{{ starting ? 'Starting…' : 'Start' }}
+      </button>
+      <button class="secondary" type="button" (click)="stop()" [disabled]="!session || session.state === 'stopped'">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>Stop
+      </button>
+      <button class="secondary" type="button" (click)="toggleAuto()" [disabled]="!session || session.state === 'stopped'">
+        <svg *ngIf="session?.automationMode !== 'paused'" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zm6 0h4v14h-4z" /></svg>
+        <svg *ngIf="session?.automationMode === 'paused'" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" /></svg>{{ session?.automationMode === 'paused' ? 'Resume Auto' : 'Pause Auto' }}
+      </button>
+      <button class="secondary" type="button" (click)="reset()">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 11a9 9 0 1 1 2.64 6.36M3 4v7h7" /></svg>Reset Session
+      </button>
+      <button type="button" class="secondary" (click)="toggleTheatre()">
+        <svg *ngIf="!theatre" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M7 8h10v8H7z" /></svg>
+        <svg *ngIf="theatre" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4M4 4l6 6m10-6-6 6m-4 4-6 6m10-6 6 6" /></svg>{{ theatre ? 'Exit theatre' : 'Theatre mode' }}
+      </button>
     </div>
-    <div class="control-row">
-      <label class="manual-channel">Manual channel
-        <span><input [(ngModel)]="manualChannel" placeholder="channel_login"><button class="secondary" type="button" (click)="selectChannel()">Switch channel</button></span>
-      </label>
-      <button type="button" class="secondary" (click)="toggleMute()">{{ muted ? 'Unmute' : 'Mute' }}</button>
-      <label class="volume">Volume <input type="range" min="0" max="100" [(ngModel)]="volume" (input)="setVolume()"></label>
-    </div>
-    <div class="control-row">
-      <button type="button" class="secondary" (click)="toggleTheatre()">{{ theatre ? 'Exit theatre' : 'Theatre mode' }}</button>
-      <button type="button" class="secondary" (click)="nativeFullscreen()">Fullscreen</button>
-      <p class="support">Wake Lock: {{ wakeLock.supported() ? (wakeLock.active() ? 'active' : 'available') : 'unavailable' }}. Keep this page visible for the most reliable handoffs.</p>
-    </div>
+    <p class="support">Wake Lock: {{ wakeLock.supported() ? (wakeLock.active() ? 'active' : 'available') : 'unavailable' }}. Keep this page visible for the most reliable handoffs.</p>
   </section>
 
   <section class="channel-priorities panel" aria-labelledby="priority-heading">
@@ -74,5 +78,7 @@
 </div>
 
 <div *ngIf="theatre" class="theatre-exit-bar">
-  <button type="button" class="secondary" (click)="toggleTheatre()">Exit theatre mode</button>
+  <button type="button" class="secondary" (click)="toggleTheatre()">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M14 10 20 4m-6 0h6v6M10 14l-6 6" /></svg>Exit theatre mode
+  </button>
 </div>

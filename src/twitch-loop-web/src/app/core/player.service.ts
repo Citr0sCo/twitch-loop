@@ -3,9 +3,6 @@ import { Injectable } from '@angular/core';
 interface TwitchPlayerInstance {
   addEventListener(event: string, callback: () => void): void;
   setChannel(channel: string): void;
-  setVolume(volume: number): void;
-  setMuted(muted: boolean): void;
-  pause(): void;
   play(): void;
   destroy(): void;
 }
@@ -39,14 +36,6 @@ export class PlayerService {
   setOnPlaying(callback: (() => void) | null): void { this.onPlaying = callback; }
   setOnPlaybackBlocked(callback: (() => void) | null): void { this.onPlaybackBlocked = callback; }
   setChannel(channel: string): void { this.player?.setChannel(channel); }
-  setVolume(volume: number): void { this.player?.setVolume(volume); }
-  setMuted(muted: boolean): void { this.player?.setMuted(muted); }
-  async requestFullscreen(): Promise<void> {
-    const target = document.querySelector<HTMLIFrameElement>('#twitch-player iframe') ?? document.getElementById('twitch-player');
-    if (!target?.requestFullscreen) throw new Error('Fullscreen is unavailable for the Twitch player');
-    await target.requestFullscreen();
-  }
-  pause(): void { this.player?.pause(); }
   play(): void { this.player?.play(); }
   destroy(): void { this.player?.destroy(); this.player = null; }
 

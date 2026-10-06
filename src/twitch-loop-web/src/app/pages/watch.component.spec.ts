@@ -6,13 +6,12 @@ import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'setChannel', 'play', 'destroy']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
     sessionStorage.clear();
     player.mount.and.returnValue(Promise.resolve());
-    player.requestFullscreen.and.returnValue(Promise.resolve());
     wakeLock.supported.and.returnValue(true);
     wakeLock.active.and.returnValue(false);
     wakeLock.request.and.returnValue(Promise.resolve(true));
@@ -61,7 +60,6 @@ describe('WatchComponent', () => {
     await fixture.whenStable();
 
     expect(player.mount).toHaveBeenCalledWith('twitch-player', 'second');
-    expect(fixture.componentInstance.muted).toBeTrue();
     expect(fixture.componentInstance.starting).toBeFalse();
     expect(fixture.nativeElement.textContent).toContain('Connecting to second…');
     expect(fixture.nativeElement.textContent).not.toContain('session_started');
@@ -104,7 +102,7 @@ describe('WatchComponent', () => {
     fixture.componentInstance.priorityStatus = { ...fixture.componentInstance.priorityStatus, checkedAt: '2026-10-06T05:00:00Z', timeZone: 'America/Los_Angeles' };
     expect(fixture.componentInstance.formatLastChecked()).toBe('22:00');
     const chat = fixture.nativeElement.querySelector('.live-chat iframe') as HTMLIFrameElement;
-    expect(chat.getAttribute('src')).toContain('https://www.twitch.tv/embed/followed_stream/chat?parent=localhost');
+    expect(chat.getAttribute('src')).toContain('https://www.twitch.tv/embed/followed_stream/chat?darkpopout&parent=localhost');
     expect(fixture.nativeElement.querySelector('.player-shell .playback-status')).toBeNull();
 
     player.setOnPlaying.calls.mostRecent().args[0]?.();
@@ -162,6 +160,9 @@ describe('WatchComponent', () => {
     expect(exitBar.textContent).toContain('Exit theatre mode');
     expect(parseFloat(getComputedStyle(exitBar).height)).toBeCloseTo(window.innerHeight * 0.1, 0);
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
+    expect(exitButton.querySelector('svg')).not.toBeNull();
+    const exitButtonBounds = exitButton.getBoundingClientRect();
+    expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(window.innerWidth / 2, 0);
     exitButton.click();
     fixture.detectChanges();
     expect(document.body.classList.contains('theatre-mode')).toBeFalse();
@@ -230,94 +231,62 @@ describe('WatchComponent', () => {
   });
 
 
-  it('starts a session and mounts a manually selected live channel', async () => {
+  it('keeps the active player visible in a top-right corner and restores it at its anchor', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'corner-session');
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
-    const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
     flushPriorityStatus(http);
-    component.manualChannel = ' yogscast ';
-    component.selectChannel();
-
-    const start = http.expectOne('/api/sessions');
-    expect(start.request.method).toBe('POST');
-    start.flush({
-      sessionId: 'session-1', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'awaiting_fresh_live_status',
-      statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-
-    http.expectOne('/api/sessions/session-1/current-stream').flush({
-      sessionId: 'session-1', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'awaiting_fresh_live_status',
-      statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-
-    const action = http.expectOne('/api/sessions/session-1/actions');
-    expect(action.request.body).toEqual({ name: 'selectChannel', channel: 'yogscast' });
-    action.flush({
-      sessionId: 'session-1', revision: 2, state: 'selected', automationMode: 'manual', channel: 'yogscast',
-      selectionTier: 'manual', reason: 'session_started',
-      statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    http.expectOne('/api/sessions/corner-session/current-stream').flush({
+      sessionId: 'corner-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'streamer',
+      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
     await fixture.whenStable();
-
-    expect(player.mount).toHaveBeenCalledWith('twitch-player', 'yogscast');
-    expect(component.manualChannel).toBe('');
-  });
-
-  it('switches an active session to a normalized manual channel', async () => {
-    sessionStorage.setItem('twitch-loop-session', 'session-2');
-    const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
-    const component = fixture.componentInstance;
-    const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http);
-    http.expectOne('/api/sessions/session-2/current-stream').flush({
-      sessionId: 'session-2', revision: 1, state: 'selected', automationMode: 'auto', channel: 'oldchannel',
-      selectionTier: 'priority', reason: 'priority_channel_live',
-      statusFreshness: 'fresh', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    await fixture.whenStable();
 
-    component.manualChannel = ' @Yogscast ';
-    component.selectChannel();
+    const anchor = fixture.nativeElement.querySelector('.player-anchor') as HTMLElement;
+    const shell = fixture.nativeElement.querySelector('.player-shell') as HTMLElement;
+    const anchorTop = anchor.getBoundingClientRect().top;
+    anchor.style.position = 'relative';
+    anchor.style.top = `${-anchorTop - 1}px`;
+    fixture.componentInstance.onScroll();
+    fixture.detectChanges();
+    expect(shell.classList.contains('corner-player')).toBeTrue();
+    expect(getComputedStyle(shell).position).toBe('fixed');
+    expect(getComputedStyle(shell).width).toBe('400px');
+    expect(getComputedStyle(shell).height).toBe('300px');
 
-    const action = http.expectOne('/api/sessions/session-2/actions');
-    expect(action.request.body).toEqual({ name: 'selectChannel', channel: 'yogscast' });
-    action.flush({
-      sessionId: 'session-2', revision: 2, state: 'selected', automationMode: 'manual', channel: 'yogscast',
-      selectionTier: 'manual', reason: 'session_started',
-      statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    await fixture.whenStable();
-
-    expect(player.setChannel).toHaveBeenCalledWith('yogscast');
-    expect(component.manualChannel).toBe('');
+    anchor.style.top = '0px';
+    fixture.componentInstance.onScroll();
+    fixture.detectChanges();
+    expect(shell.classList.contains('corner-player')).toBeFalse();
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
   });
 
-  it('requests fullscreen for the Twitch player', async () => {
+  it('keeps playback actions icon-labeled and omits redundant channel and player controls', async () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     flushPriorityStatus(http);
     const waitingSession = {
-      sessionId: 'fullscreen-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      sessionId: 'controls-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
       selectionTier: null, reason: 'awaiting_fresh_live_status',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     };
     http.expectOne('/api/sessions').flush(waitingSession);
-    http.expectOne('/api/sessions/fullscreen-session/current-stream').flush(waitingSession);
+    http.expectOne('/api/sessions/controls-session/current-stream').flush(waitingSession);
     await fixture.whenStable();
+    fixture.detectChanges();
 
-    const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
-    const button = Array.from(buttons).find(candidate => candidate.textContent?.trim() === 'Fullscreen')!;
-    button.click();
-    await fixture.whenStable();
-
-    expect(player.requestFullscreen).toHaveBeenCalled();
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('.control-buttons button') as NodeListOf<HTMLButtonElement>);
+    expect(buttons.map(button => button.textContent?.trim())).toEqual(['Start', 'Stop', 'Pause Auto', 'Reset Session', 'Theatre mode']);
+    expect(buttons.every(button => button.querySelector('svg'))).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.manual-channel')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.volume')).toBeNull();
+    expect(fixture.nativeElement.querySelector('input[type="range"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Fullscreen');
     fixture.destroy();
   });
 });
