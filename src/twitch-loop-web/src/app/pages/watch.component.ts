@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, NgZone, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Subscription, interval, startWith, switchMap } from 'rxjs';
-import { ApiService, SessionState } from '../core/api.service';
+import { EMPTY, Subscription, catchError, interval, startWith, switchMap } from 'rxjs';
+import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 
@@ -11,11 +11,15 @@ export class WatchComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly player = inject(PlayerService);
   private readonly wakeLock = inject(WakeLockService);
+  private readonly zone = inject(NgZone);
   private pollSubscription: Subscription | null = null;
+  private statusSubscription: Subscription | null = null;
   private pendingChannel: string | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   session: SessionState | null = null;
+  priorityStatus: PriorityStatus = { channels: [], checkedAt: null };
+  playerPlaying = false;
   manualChannel = '';
   volume = 80;
   muted = true;
@@ -25,7 +29,14 @@ export class WatchComponent implements OnInit, OnDestroy {
   message = '';
   error = '';
 
+  get playbackState(): string {
+    if (this.playerPlaying) return 'playing';
+    return this.session?.channel ? 'connecting' : this.session?.state || 'stopped';
+  }
+
   ngOnInit(): void {
+    this.player.setOnPlaying(() => this.zone.run(() => this.onPlayerPlaying()));
+    this.pollPriorityStatus();
     const existing = sessionStorage.getItem('twitch-loop-session');
     if (existing) this.poll(existing);
     else this.start();
@@ -55,7 +66,7 @@ export class WatchComponent implements OnInit, OnDestroy {
 
   stop(): void {
     if (!this.session) return;
-    this.api.sessionAction(this.session.sessionId, 'stop').subscribe({ next: state => { this.apply(state); this.player.destroy(); this.playerMounted = false; void this.wakeLock.release(); } });
+    this.api.sessionAction(this.session.sessionId, 'stop').subscribe({ next: state => { this.apply(state); this.player.destroy(); this.playerMounted = false; this.playerPlaying = false; void this.wakeLock.release(); } });
   }
 
   toggleAuto(): void {
@@ -79,13 +90,13 @@ export class WatchComponent implements OnInit, OnDestroy {
     else this.start(channel);
   }
 
-  reset(): void { sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.lastRevision = 0; this.playerMounted = false; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.player.destroy(); void this.wakeLock.release(); }
   setVolume(): void { this.player.setVolume(this.volume / 100); }
   toggleMute(): void { this.muted = !this.muted; this.player.setMuted(this.muted); }
   toggleTheatre(): void { this.theatre = !this.theatre; }
   nativeFullscreen(): void { void this.player.requestFullscreen().catch(() => this.error = 'Fullscreen is unavailable for the Twitch player.'); }
 
-  ngOnDestroy(): void { this.pollSubscription?.unsubscribe(); this.player.destroy(); void this.wakeLock.release(); }
+  ngOnDestroy(): void { this.pollSubscription?.unsubscribe(); this.statusSubscription?.unsubscribe(); this.player.setOnPlaying(null); this.player.destroy(); void this.wakeLock.release(); }
 
   private requestChannel(sessionId: string, channel: string): void {
     this.api.sessionAction(sessionId, 'selectChannel', channel).subscribe({ next: state => { this.apply(state); this.manualChannel = ''; this.error = ''; }, error: () => this.error = 'Could not switch to that Twitch channel.' });
@@ -96,9 +107,23 @@ export class WatchComponent implements OnInit, OnDestroy {
     this.pollSubscription = interval(15000).pipe(startWith(0), switchMap(() => this.api.currentSession(id))).subscribe({ next: state => this.apply(state), error: () => this.message = 'Waiting for the local API…' });
   }
 
+
+  private pollPriorityStatus(): void {
+    this.statusSubscription = interval(15000).pipe(
+      startWith(0),
+      switchMap(() => this.api.priorityStatus().pipe(catchError(() => EMPTY)))
+    ).subscribe(status => this.priorityStatus = status);
+  }
+
+  private onPlayerPlaying(): void {
+    this.playerPlaying = true;
+    if (this.session) this.session = { ...this.session, state: 'playing' };
+  }
+
   private apply(state: SessionState): void {
     if (state.revision < this.lastRevision) return;
     const changed = state.channel !== this.session?.channel;
+    if (changed) this.playerPlaying = false;
     this.lastRevision = state.revision; this.session = state;
     if (state.channel && changed) void this.mountOrSwitch(state.channel);
   }

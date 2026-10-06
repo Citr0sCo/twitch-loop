@@ -39,6 +39,17 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
     [HttpGet("status")]
     public IActionResult Status() => Ok(new { data = Array.Empty<object>(), freshness = "unknown" });
 
+    [HttpGet("priority-status")]
+    public async Task<IActionResult> PriorityStatus([FromServices] PriorityStatusCache status, CancellationToken cancellationToken)
+    {
+        var snapshot = status.Snapshot;
+        var liveByLogin = snapshot.Channels.ToDictionary(channel => channel.Login, channel => channel.IsLive, StringComparer.OrdinalIgnoreCase);
+        var channels = await store.GetScheduleAsync(cancellationToken);
+        var configured = channels.Where(channel => !TwitchLoop.Core.ScheduleChannels.IsAutomaticFallback(channel))
+            .Select(login => new { login, isLive = liveByLogin.TryGetValue(login, out var isLive) ? (bool?)isLive : null });
+        return Ok(new { channels = configured, checkedAt = snapshot.CheckedAt });
+    }
+
     [HttpPost("refresh")]
     public IActionResult Refresh() => Accepted(new { status = "queued" });
 

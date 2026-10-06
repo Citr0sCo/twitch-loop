@@ -1,7 +1,63 @@
-<section class="page-heading"><div><p class="eyebrow">Playback</p><h1>Watch</h1><p>One official Twitch player, automatically following your live-channel priority list.</p></div><span class="status" [class.live]="session?.channel">{{ session?.state || 'stopped' }}</span></section>
-<div *ngIf="error" class="notice error" role="alert">{{ error }}</div><div *ngIf="message" class="notice" role="status">{{ message }}</div>
-<section class="watch-layout"><div class="player-shell" [class.theatre]="theatre"><div id="twitch-player" class="player"></div><div *ngIf="!session?.channel" class="player-placeholder"><strong *ngIf="session?.state === 'waiting'">Waiting for a live candidate</strong><strong *ngIf="!session">Ready to start</strong><span>{{ session?.reason || 'Start playback to check your priority list.' }}</span></div></div>
-<aside class="controls panel"><button class="primary" type="button" (click)="start()" [disabled]="starting || (!!session && session.state !== 'stopped')">{{ starting ? 'Starting…' : 'Start' }}</button><button class="secondary" type="button" (click)="stop()" [disabled]="!session || session.state === 'stopped'">Stop</button><button class="secondary" type="button" (click)="toggleAuto()" [disabled]="!session || session.state === 'stopped'">{{ session?.automationMode === 'paused' ? 'Resume Auto' : 'Pause Auto' }}</button><button class="secondary" type="button" (click)="reset()">Reset Session</button>
-<label>Manual channel<input [(ngModel)]="manualChannel" placeholder="channel_login"><button class="secondary" type="button" (click)="selectChannel()">Switch channel</button></label>
-<div class="control-row"><button type="button" class="secondary" (click)="toggleMute()">{{ muted ? 'Unmute' : 'Mute' }}</button><label class="volume">Volume <input type="range" min="0" max="100" [(ngModel)]="volume" (input)="setVolume()"></label></div><div class="control-row"><button type="button" class="secondary" (click)="toggleTheatre()">{{ theatre ? 'Exit theatre' : 'Theatre mode' }}</button><button type="button" class="secondary" (click)="nativeFullscreen()">Fullscreen</button></div>
-<dl><div><dt>Channel</dt><dd>{{ session?.channel || 'None selected' }}</dd></div><div><dt>Selection</dt><dd>{{ session?.selectionTier || 'Waiting' }}</dd></div><div><dt>Freshness</dt><dd>{{ session?.statusFreshness || '—' }}</dd></div><div><dt>Reason</dt><dd>{{ session?.reason || '—' }}</dd></div></dl><p class="support">Wake Lock: {{ wakeLock.supported() ? (wakeLock.active() ? 'active' : 'available') : 'unavailable' }}. Keep this page visible for the most reliable handoffs.</p></aside></section>
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Playback</p>
+    <h1>Watch</h1>
+    <p>One official Twitch player, automatically following your live-channel priority list.</p>
+  </div>
+  <span class="status" [class.live]="playerPlaying">{{ playbackState }}</span>
+</section>
+
+<div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
+<div *ngIf="message" class="notice" role="status">{{ message }}</div>
+
+<div class="player-shell" [class.theatre]="theatre">
+  <div id="twitch-player" class="player"></div>
+  <div *ngIf="!playerPlaying" class="player-placeholder" role="status">
+    <strong *ngIf="session?.channel">Connecting to {{ session.channel }}…</strong>
+    <strong *ngIf="session?.state === 'waiting'">Waiting for a live candidate</strong>
+    <strong *ngIf="!session">Ready to start</strong>
+    <strong *ngIf="session?.state === 'stopped'">Playback stopped</strong>
+    <span>{{ session?.reason || 'Start playback to check your priority list.' }}</span>
+  </div>
+</div>
+
+<section class="channel-priorities panel" aria-labelledby="priority-heading">
+  <div class="section-heading">
+    <div>
+      <h2 id="priority-heading">Configured stream priorities</h2>
+      <p *ngIf="priorityStatus.checkedAt">Last checked {{ priorityStatus.checkedAt | date:'shortTime' }}</p>
+    </div>
+    <span *ngIf="session?.channel" class="now-playing">{{ playerPlaying ? 'Playing' : 'Switching to' }}: {{ session.channel }}</span>
+  </div>
+  <ol *ngIf="priorityStatus.channels.length; else noPriorities">
+    <li *ngFor="let channel of priorityStatus.channels" [class.current]="session?.channel?.toLowerCase() === channel.login.toLowerCase()">
+      <span class="channel-name">{{ channel.login }}</span>
+      <span class="channel-state" [class.live]="channel.isLive === true" [class.offline]="channel.isLive === false">
+        {{ channel.isLive === true ? 'Live' : channel.isLive === false ? 'Offline' : 'Checking' }}
+      </span>
+      <span *ngIf="playerPlaying && session?.channel?.toLowerCase() === channel.login.toLowerCase()" class="playing-indicator">Currently playing</span>
+    </li>
+  </ol>
+  <ng-template #noPriorities><p class="empty-priorities">No configured stream priorities. Add channels in Settings.</p></ng-template>
+</section>
+
+<section class="controls panel" aria-label="Playback controls">
+  <div class="control-buttons">
+    <button class="primary" type="button" (click)="start()" [disabled]="starting || (!!session && session.state !== 'stopped')">{{ starting ? 'Starting…' : 'Start' }}</button>
+    <button class="secondary" type="button" (click)="stop()" [disabled]="!session || session.state === 'stopped'">Stop</button>
+    <button class="secondary" type="button" (click)="toggleAuto()" [disabled]="!session || session.state === 'stopped'">{{ session?.automationMode === 'paused' ? 'Resume Auto' : 'Pause Auto' }}</button>
+    <button class="secondary" type="button" (click)="reset()">Reset Session</button>
+  </div>
+  <div class="control-row">
+    <label class="manual-channel">Manual channel
+      <span><input [(ngModel)]="manualChannel" placeholder="channel_login"><button class="secondary" type="button" (click)="selectChannel()">Switch channel</button></span>
+    </label>
+    <button type="button" class="secondary" (click)="toggleMute()">{{ muted ? 'Unmute' : 'Mute' }}</button>
+    <label class="volume">Volume <input type="range" min="0" max="100" [(ngModel)]="volume" (input)="setVolume()"></label>
+  </div>
+  <div class="control-row">
+    <button type="button" class="secondary" (click)="toggleTheatre()">{{ theatre ? 'Exit theatre' : 'Theatre mode' }}</button>
+    <button type="button" class="secondary" (click)="nativeFullscreen()">Fullscreen</button>
+    <p class="support">Wake Lock: {{ wakeLock.supported() ? (wakeLock.active() ? 'active' : 'available') : 'unavailable' }}. Keep this page visible for the most reliable handoffs.</p>
+  </div>
+</section>

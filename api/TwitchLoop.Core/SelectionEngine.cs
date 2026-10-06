@@ -39,7 +39,7 @@ public sealed class SelectionEngine
                 return new SelectionResult(null, null, "priority_channel_status_unknown");
             }
 
-            if (candidate.Status == LiveStatus.Live && !Same(candidate.Login, excludedChannel))
+            if (candidate.Status == LiveStatus.Live)
             {
                 return new SelectionResult(candidate.Login, SelectionTier.Priority, "priority_channel_live");
             }

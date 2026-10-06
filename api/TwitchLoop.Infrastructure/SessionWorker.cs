@@ -4,7 +4,7 @@ using TwitchLoop.Core;
 
 namespace TwitchLoop.Infrastructure;
 
-public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, TokenStore tokens, IClock clock, IRandomSource random, ILogger<SessionWorker> logger) : BackgroundService
+public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, TokenStore tokens, PriorityStatusCache priorityStatus, IClock clock, IRandomSource random, ILogger<SessionWorker> logger) : BackgroundService
 {
     private const int PollSeconds = 60;
 
@@ -45,6 +45,7 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
 
         var live = status.Data.Select(stream => stream.UserLogin).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var priorityCandidates = priorityLogins.Select(login => new Candidate(login, login, live.Contains(login) ? LiveStatus.Live : LiveStatus.Offline)).ToArray();
+        priorityStatus.Update(priorityCandidates, clock.UtcNow);
         var followingCandidates = followedLogins.Select(login => new Candidate(login, login, live.Contains(login) ? LiveStatus.Live : LiveStatus.Offline)).ToArray();
         var twitchWide = await twitch.GetStreamsAsync([], accessToken, cancellationToken);
         var twitchWideCandidates = twitchWide.Data.Select(stream => new Candidate(stream.UserId, stream.UserLogin, LiveStatus.Live)).ToArray();

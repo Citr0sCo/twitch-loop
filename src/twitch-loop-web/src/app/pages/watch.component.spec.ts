@@ -6,7 +6,7 @@ import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setChannel', 'setVolume', 'setMuted', 'requestFullscreen', 'pause', 'play', 'destroy']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
@@ -28,6 +28,11 @@ describe('WatchComponent', () => {
     }).compileComponents();
   });
 
+  function flushPriorityStatus(http: HttpTestingController, channels: { login: string; isLive: boolean | null }[] = []): void {
+    http.expectOne('/api/channels/priority-status').flush({ channels, checkedAt: '2026-10-06T05:00:00Z' });
+  }
+
+
   afterEach(() => {
     TestBed.inject(HttpTestingController).verify();
     player.mount.calls.reset();
@@ -38,8 +43,13 @@ describe('WatchComponent', () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http, [
+      { login: 'first', isLive: false },
+      { login: 'second', isLive: true },
+      { login: 'third', isLive: true }
+    ]);
     const scheduledSession = {
-      sessionId: 'scheduled-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'scheduledlive',
+      sessionId: 'scheduled-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'second',
       selectionTier: 'automatic', reason: 'priority_channel_live',
       statusFreshness: 'fresh', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     };
@@ -47,8 +57,17 @@ describe('WatchComponent', () => {
     http.expectOne('/api/sessions/scheduled-session/current-stream').flush(scheduledSession);
     await fixture.whenStable();
 
-    expect(player.mount).toHaveBeenCalledWith('twitch-player', 'scheduledlive');
+    expect(player.mount).toHaveBeenCalledWith('twitch-player', 'second');
     expect(fixture.componentInstance.muted).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.player-placeholder')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('aside')).toBeNull();
+    player.setOnPlaying.calls.mostRecent().args[0]?.();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.session?.state).toBe('playing');
+    expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Currently playing');
+    expect(fixture.nativeElement.textContent).toContain('Offline');
+    expect(fixture.nativeElement.textContent).toContain('Live');
     expect(sessionStorage.getItem('twitch-loop-session')).toBe('scheduled-session');
     fixture.destroy();
   });
@@ -59,6 +78,7 @@ describe('WatchComponent', () => {
     fixture.detectChanges();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
     component.manualChannel = ' yogscast ';
     component.selectChannel();
 
@@ -95,6 +115,7 @@ describe('WatchComponent', () => {
     fixture.detectChanges();
     const component = fixture.componentInstance;
     const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
     http.expectOne('/api/sessions/session-2/current-stream').flush({
       sessionId: 'session-2', revision: 1, state: 'selected', automationMode: 'auto', channel: 'oldchannel',
       selectionTier: 'automatic', reason: 'priority_channel_live',
@@ -124,6 +145,7 @@ describe('WatchComponent', () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
     const waitingSession = {
       sessionId: 'fullscreen-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
       selectionTier: null, reason: 'awaiting_fresh_live_status',
