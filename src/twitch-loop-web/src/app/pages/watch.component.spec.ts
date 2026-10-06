@@ -34,6 +34,26 @@ describe('WatchComponent', () => {
     player.setChannel.calls.reset();
   });
 
+  it('starts playback automatically on a fresh Watch visit', async () => {
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const scheduledSession = {
+      sessionId: 'scheduled-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'scheduledlive',
+      selectionTier: 'scheduled', activeSlotId: 'morning', nextSlotTime: null, reason: 'scheduled_channel_live',
+      statusFreshness: 'fresh', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    };
+    http.expectOne('/api/sessions').flush(scheduledSession);
+    http.expectOne('/api/sessions/scheduled-session/current-stream').flush(scheduledSession);
+    await fixture.whenStable();
+
+    expect(player.mount).toHaveBeenCalledWith('twitch-player', 'scheduledlive');
+    expect(fixture.componentInstance.muted).toBeTrue();
+    expect(sessionStorage.getItem('twitch-loop-session')).toBe('scheduled-session');
+    fixture.destroy();
+  });
+
+
   it('starts a session and mounts a manually selected live channel', async () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
@@ -103,6 +123,15 @@ describe('WatchComponent', () => {
   it('requests fullscreen for the Twitch player', async () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const waitingSession = {
+      sessionId: 'fullscreen-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, activeSlotId: null, nextSlotTime: null, reason: 'awaiting_fresh_live_status',
+      statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    };
+    http.expectOne('/api/sessions').flush(waitingSession);
+    http.expectOne('/api/sessions/fullscreen-session/current-stream').flush(waitingSession);
+    await fixture.whenStable();
 
     const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
     const button = Array.from(buttons).find(candidate => candidate.textContent?.trim() === 'Fullscreen')!;

@@ -44,6 +44,35 @@ public sealed class SqliteStoreTests
     }
 
     [Test]
+    public async Task ScheduleRoundTripPreservesOrderedChannelFallbacks()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:DataDirectory"] = directory
+            }).Build();
+            var store = new SqliteStore(configuration);
+            await store.InitializeAsync();
+            await store.SaveScheduleAsync(new[]
+            {
+                new TwitchLoop.Core.ScheduleSlot("morning", true, new TimeOnly(7, 0), new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing })
+            }, 1, "test", CancellationToken.None);
+
+            var stored = await store.GetScheduleAsync(CancellationToken.None);
+
+            Assert.That(stored.Single().Channels, Is.EqualTo(new[] { "first", "second", TwitchLoop.Core.ScheduleChannels.AnyFollowing }));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+
+    [Test]
     public async Task AppTimeZoneRemainsEnvironmentConfigurationRatherThanAnAppSetting()
     {
         var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));

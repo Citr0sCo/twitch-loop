@@ -27,12 +27,41 @@ public sealed class ScheduleAndSelectionTests
     }
 
     [Test]
+    public void EmptyOrDisabledScheduleFallsBackToAnyFollowedChannel()
+    {
+        var evaluator = new ScheduleEvaluator();
+        var now = new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.Zero);
+        var empty = evaluator.Evaluate(Array.Empty<ScheduleSlot>(), now, TimeZoneInfo.Utc);
+        var disabled = evaluator.Evaluate(new[] { new ScheduleSlot("disabled", false, new TimeOnly(12, 0), Array.Empty<string>()) }, now, TimeZoneInfo.Utc);
+
+        Assert.That(empty.Channels, Is.EqualTo(new[] { ScheduleChannels.AnyFollowing }));
+        Assert.That(disabled.Channels, Is.EqualTo(new[] { ScheduleChannels.AnyFollowing }));
+        var selection = new SelectionEngine(new FixedRandom(0)).Select(
+            empty.Channels,
+            Array.Empty<Candidate>(),
+            new[] { new Candidate("followed", "followed", LiveStatus.Live) },
+            null);
+        Assert.That(selection.Channel, Is.EqualTo("followed"));
+    }
+
+
+    [Test]
     public void HandoffPreservesOrderedScheduledFallback()
     {
         var statuses = new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) };
         var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), null);
         Assert.That(result.Channel, Is.EqualTo("second"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
+    }
+
+    [Test]
+    public void EmptyOrDisabledSchedulesAreValidForAutomaticFallbackPlayback()
+    {
+        Assert.That(ScheduleValidation.Validate(Array.Empty<ScheduleSlot>()), Is.Empty);
+        Assert.That(ScheduleValidation.Validate(new[]
+        {
+            new ScheduleSlot("disabled", false, new TimeOnly(12, 0), Array.Empty<string>())
+        }), Is.Empty);
     }
 
     [Test]

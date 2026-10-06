@@ -36,7 +36,8 @@ builder.Services.AddSingleton<SqliteStore>();
 builder.Services.AddSingleton<TokenStore>();
 builder.Services.AddSingleton<TwitchLoop.Core.IClock, TwitchLoop.Core.SystemClock>();
 builder.Services.AddSingleton<TwitchLoop.Core.IRandomSource, TwitchLoop.Core.SystemRandomSource>();
-builder.Services.AddHostedService<SessionWorker>();
+builder.Services.AddSingleton<SessionWorker>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionWorker>());
 
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())

@@ -7,5 +7,8 @@ button, input, select { font: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #c4a8ff; outline-offset: 2px; }
 button { background: transparent; border: 1px solid #55555d; border-radius: .65rem; color: #d4d4d8; cursor: pointer; font: inherit; padding: .8rem 1.1rem; }
 button:hover:not(:disabled) { border-color: #9146ff; color: #fff; }
+button.primary { background: #9146ff; border-color: #9146ff; color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #7f35e8; border-color: #7f35e8; }
+button.danger:hover:not(:disabled) { border-color: #d95d75; color: #fff; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .connect-card button { padding: 1rem 2rem; }

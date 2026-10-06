@@ -41,7 +41,7 @@ export class SettingsComponent implements OnInit {
     this.loadSettings();
     this.loadSchedule();
     this.api.following().subscribe({
-      next: response => { this.following = response.data; this.changeDetector.markForCheck(); },
+      next: response => { this.following = [...response.data].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })); this.changeDetector.markForCheck(); },
       error: error => { this.error = error?.error?.detail ?? 'Could not load followed channels. Reconnect with Twitch and try again.'; this.changeDetector.markForCheck(); }
     });
   }
@@ -105,7 +105,7 @@ export class SettingsComponent implements OnInit {
     const normalized = login.trim().toLowerCase();
     if (!normalized) return;
     const channels = this.explicitChannels(slot);
-    if (!channels.some(channel => channel.toLowerCase() === normalized)) slot.channels = [...channels, ANY_FOLLOWING];
+    if (!channels.some(channel => channel.toLowerCase() === normalized)) slot.channels = [...channels, normalized, ANY_FOLLOWING];
     slot.selectedLogin = '';
   }
 

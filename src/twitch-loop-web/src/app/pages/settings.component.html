@@ -19,17 +19,17 @@
   </form>
   <form (ngSubmit)="saveSchedule()">
   <fieldset class="schedule-fields" [disabled]="!canSaveSchedule">
-  <section class="panel"><div class="section-head"><div><h2>Daily schedule</h2><p>Each time tries selected followed channels in order, then a live channel you follow.</p></div><button class="secondary" type="button" (click)="addSlot()">Add trigger time</button></div>
+  <section class="panel"><div class="section-head"><div><h2>Daily schedule</h2><p>Each time tries selected followed channels in order, then a live channel you follow.</p></div><button class="primary" type="button" (click)="addSlot()">Add trigger time</button></div>
     <div class="slot" *ngFor="let slot of editableSlots; let i = index">
       <div class="slot-fields"><label class="check"><input [name]="'enabled-' + slot.id" type="checkbox" [(ngModel)]="slot.enabled"> Enabled</label><label>Trigger time<input [name]="'time-' + slot.id" type="time" [(ngModel)]="slot.startTime"></label></div>
       <div class="ordered"><h3>Ordered followed channels</h3><ol class="channel-list">
         <li *ngFor="let login of explicitChannels(slot); let channelIndex = index"><span>{{ channelName(login) }} <small>@{{ login }}</small></span><span class="channel-actions"><button type="button" (click)="moveChannel(slot, channelIndex, -1)" [disabled]="channelIndex === 0" aria-label="Move channel up">↑</button><button type="button" (click)="moveChannel(slot, channelIndex, 1)" [disabled]="channelIndex === explicitChannels(slot).length - 1" aria-label="Move channel down">↓</button><button type="button" class="danger" (click)="removeChannel(slot, channelIndex)">Remove</button></span></li>
-        <li *ngFor="let fallback of slot.channels.filter(isAutomatic)" class="automatic"><span>{{ automaticLabel(fallback) }}</span><strong>Automatic</strong></li>
+        <li *ngFor="let fallback of slot.channels.filter(isAutomatic)" class="automatic" aria-label="Automatic fallback, read-only"><span>{{ automaticLabel(fallback) }}</span><small>Read-only fallback</small></li>
       </ol>
       <div class="add-channel"><label [attr.for]="'follow-' + slot.id">Add followed channel<select [id]="'follow-' + slot.id" [name]="'follow-' + slot.id" [(ngModel)]="slot.selectedLogin" (ngModelChange)="addChannel(slot, $event)"><option value="">Choose a followed channel</option><option *ngFor="let channel of following" [value]="channel.login">{{ channel.name }} (@{{ channel.login }})</option></select></label></div></div>
       <div class="slot-actions"><button type="button" (click)="moveSlot(i, -1)" [disabled]="i === 0" aria-label="Move trigger up">↑</button><button type="button" (click)="moveSlot(i, 1)" [disabled]="i === editableSlots.length - 1" aria-label="Move trigger down">↓</button><button type="button" class="danger" (click)="removeSlot(i)">Delete trigger</button></div>
     </div>
-    <p *ngIf="editableSlots.length === 0" class="empty">Add at least one trigger time before starting playback.</p>
+    <p *ngIf="editableSlots.length === 0" class="empty">No trigger times configured. Playback will use a live followed channel automatically.</p>
   </section>
   </fieldset>
   <button class="primary" type="submit" [disabled]="!canSaveSchedule">Save schedule</button>
