@@ -40,7 +40,7 @@ describe('WatchComponent', () => {
     const http = TestBed.inject(HttpTestingController);
     const scheduledSession = {
       sessionId: 'scheduled-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'scheduledlive',
-      selectionTier: 'scheduled', activeSlotId: 'morning', nextSlotTime: null, reason: 'scheduled_channel_live',
+      selectionTier: 'automatic', reason: 'priority_channel_live',
       statusFreshness: 'fresh', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     };
     http.expectOne('/api/sessions').flush(scheduledSession);
@@ -66,13 +66,13 @@ describe('WatchComponent', () => {
     expect(start.request.method).toBe('POST');
     start.flush({
       sessionId: 'session-1', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, activeSlotId: null, nextSlotTime: null, reason: 'awaiting_fresh_live_status',
+      selectionTier: null, reason: 'awaiting_fresh_live_status',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
 
     http.expectOne('/api/sessions/session-1/current-stream').flush({
       sessionId: 'session-1', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, activeSlotId: null, nextSlotTime: null, reason: 'awaiting_fresh_live_status',
+      selectionTier: null, reason: 'awaiting_fresh_live_status',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
 
@@ -80,7 +80,7 @@ describe('WatchComponent', () => {
     expect(action.request.body).toEqual({ name: 'selectChannel', channel: 'yogscast' });
     action.flush({
       sessionId: 'session-1', revision: 2, state: 'selected', automationMode: 'manual', channel: 'yogscast',
-      selectionTier: 'manual', activeSlotId: null, nextSlotTime: null, reason: 'session_started',
+      selectionTier: 'manual', reason: 'session_started',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
     await fixture.whenStable();
@@ -97,7 +97,7 @@ describe('WatchComponent', () => {
     const http = TestBed.inject(HttpTestingController);
     http.expectOne('/api/sessions/session-2/current-stream').flush({
       sessionId: 'session-2', revision: 1, state: 'selected', automationMode: 'auto', channel: 'oldchannel',
-      selectionTier: 'scheduled', activeSlotId: null, nextSlotTime: null, reason: 'scheduled_channel_live',
+      selectionTier: 'automatic', reason: 'priority_channel_live',
       statusFreshness: 'fresh', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
     await fixture.whenStable();
@@ -109,7 +109,7 @@ describe('WatchComponent', () => {
     expect(action.request.body).toEqual({ name: 'selectChannel', channel: 'yogscast' });
     action.flush({
       sessionId: 'session-2', revision: 2, state: 'selected', automationMode: 'manual', channel: 'yogscast',
-      selectionTier: 'manual', activeSlotId: null, nextSlotTime: null, reason: 'session_started',
+      selectionTier: 'manual', reason: 'session_started',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
     await fixture.whenStable();
@@ -126,7 +126,7 @@ describe('WatchComponent', () => {
     const http = TestBed.inject(HttpTestingController);
     const waitingSession = {
       sessionId: 'fullscreen-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, activeSlotId: null, nextSlotTime: null, reason: 'awaiting_fresh_live_status',
+      selectionTier: null, reason: 'awaiting_fresh_live_status',
       statusFreshness: 'unknown', pollAfterSeconds: 15, settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     };
     http.expectOne('/api/sessions').flush(waitingSession);

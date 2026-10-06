@@ -57,8 +57,9 @@ public sealed class TwitchApiClient(HttpClient httpClient, IConfiguration config
         {
             foreach (var batch in batches)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.twitch.tv/helix/streams");
-                foreach (var login in batch) request.Headers.Add("user_login", login);
+                var query = string.Join("&", batch.Select(login => $"user_login={Uri.EscapeDataString(login)}"));
+                var uri = "https://api.twitch.tv/helix/streams?first=100" + (query.Length == 0 ? "" : $"&{query}");
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                 request.Headers.Add("Client-Id", clientId);
                 using var response = await httpClient.SendAsync(request, cancellationToken);

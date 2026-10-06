@@ -4,12 +4,11 @@ import { Observable } from 'rxjs';
 
 export interface AuthProfile { login: string | null; displayName: string | null; profileImageUrl: string | null; }
 export interface AuthStatus { setupRequired: boolean; connected: boolean; ownerConfigured: boolean; profile: AuthProfile | null; scopes: string[]; }
-export interface Settings { version: number; keepAwake: boolean; autoMaximiseStream: boolean; maximiseMode: string; twitchPollSeconds: number; browserPollSeconds: number; sessionDurationHours: number; source: string; }
-export interface ScheduleSlot { id: string; enabled: boolean; startTime: string; channels: string[]; }
-export interface ScheduleResponse { version: number; slots: ScheduleSlot[]; }
+export interface Settings { version: number; keepAwake: boolean; autoMaximiseStream: boolean; maximiseMode: string; browserPollSeconds: number; sessionDurationHours: number; source: string; }
+export interface ScheduleResponse { version: number; channels: string[]; }
 export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
-export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; activeSlotId: string | null; nextSlotTime: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
+export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {

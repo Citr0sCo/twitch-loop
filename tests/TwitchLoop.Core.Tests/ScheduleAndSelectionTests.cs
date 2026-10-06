@@ -6,94 +6,39 @@ namespace TwitchLoop.Core.Tests;
 public sealed class ScheduleAndSelectionTests
 {
     [Test]
-    public void BeforeFirstSlotUsesPreviousDayLastSlot()
+    public void SelectsFirstLiveConfiguredChannelInPriorityOrder()
     {
-        var slots = new[]
-        {
-            new ScheduleSlot("midday", true, new TimeOnly(12, 0), new[] { "day" }),
-            new ScheduleSlot("evening", true, new TimeOnly(18, 0), new[] { "night" })
-        };
-        var result = new ScheduleEvaluator().Evaluate(slots, new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.Zero), TimeZoneInfo.Utc);
-        Assert.That(result.SlotId, Is.EqualTo("evening"));
-        Assert.That(result.Channels, Is.EqualTo(new[] { "night" }));
+        var result = Select(
+            ["first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Live), Candidate("second", LiveStatus.Live)],
+            [Candidate("followed", LiveStatus.Live)],
+            [Candidate("global", LiveStatus.Live)]);
+
+        Assert.That(result.Channel, Is.EqualTo("first"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Priority));
     }
 
     [Test]
-    public void ScheduleTimeZoneUsesEnvironmentOverrideAndLondonDefault()
+    public void SkipsOfflineConfiguredChannelsAndPicksNextLiveChannel()
     {
-        Assert.That(ScheduleTimeZones.Resolve("America/Toronto").Id, Is.EqualTo("America/Toronto"));
-        Assert.That(ScheduleTimeZones.Resolve(null).Id, Is.EqualTo("Europe/London"));
-        Assert.That(ScheduleTimeZones.Resolve("invalid-zone"), Is.EqualTo(TimeZoneInfo.Utc));
-    }
+        var result = Select(
+            ["first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Offline), Candidate("second", LiveStatus.Live)],
+            [Candidate("followed", LiveStatus.Live)],
+            [Candidate("global", LiveStatus.Live)]);
 
-    [Test]
-    public void EmptyOrDisabledScheduleFallsBackToAnyFollowedChannel()
-    {
-        var evaluator = new ScheduleEvaluator();
-        var now = new DateTimeOffset(2026, 10, 5, 6, 0, 0, TimeSpan.Zero);
-        var empty = evaluator.Evaluate(Array.Empty<ScheduleSlot>(), now, TimeZoneInfo.Utc);
-        var disabled = evaluator.Evaluate(new[] { new ScheduleSlot("disabled", false, new TimeOnly(12, 0), Array.Empty<string>()) }, now, TimeZoneInfo.Utc);
-
-        Assert.That(empty.Channels, Is.EqualTo(new[] { ScheduleChannels.AnyFollowing }));
-        Assert.That(disabled.Channels, Is.EqualTo(new[] { ScheduleChannels.AnyFollowing }));
-        var selection = new SelectionEngine(new FixedRandom(0)).Select(
-            empty.Channels,
-            Array.Empty<Candidate>(),
-            new[] { new Candidate("followed", "followed", LiveStatus.Live) },
-            null);
-        Assert.That(selection.Channel, Is.EqualTo("followed"));
-    }
-
-
-    [Test]
-    public void HandoffPreservesOrderedScheduledFallback()
-    {
-        var statuses = new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) };
-        var result = new SelectionEngine(new FixedRandom(0)).Select(new[] { "first", "second" }, statuses, Array.Empty<Candidate>(), null);
         Assert.That(result.Channel, Is.EqualTo("second"));
-        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Priority));
     }
 
     [Test]
-    public void EmptyOrDisabledSchedulesAreValidForAutomaticFallbackPlayback()
+    public void FallsBackToAnyLiveFollowedChannelBeforeTwitchWideChannels()
     {
-        Assert.That(ScheduleValidation.Validate(Array.Empty<ScheduleSlot>()), Is.Empty);
-        Assert.That(ScheduleValidation.Validate(new[]
-        {
-            new ScheduleSlot("disabled", false, new TimeOnly(12, 0), Array.Empty<string>())
-        }), Is.Empty);
-    }
-
-    [Test]
-    public void UnknownScheduledStatusDoesNotFallThrough()
-    {
-        var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "first" },
-            new[] { new Candidate("1", "first", LiveStatus.Unknown) },
-            Array.Empty<Candidate>(), null);
-        Assert.That(result.Channel, Is.Null);
-        Assert.That(result.Reason, Is.EqualTo("scheduled_channel_status_unknown"));
-    }
-
-    [Test]
-    public void ScheduleValidationRejectsDuplicateTimesAndChannels()
-    {
-        var errors = ScheduleValidation.Validate(new[]
-        {
-            new ScheduleSlot("one", true, new TimeOnly(9, 0), new[] { "alpha", "alpha" }),
-            new ScheduleSlot("two", true, new TimeOnly(9, 0), new[] { "beta" })
-        });
-        Assert.That(errors, Has.Count.EqualTo(2));
-    }
-
-
-    [Test]
-    public void AnyFollowingFallbackSelectsLiveFollowedChannel()
-    {
-        var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "offline", ScheduleChannels.AnyFollowing, "any" },
-            new[] { new Candidate("1", "offline", LiveStatus.Offline) },
-            new[] { new Candidate("2", "followed", LiveStatus.Live) }, null);
+        var result = Select(
+            ["first", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Offline)],
+            [Candidate("followed", LiveStatus.Live)],
+            [Candidate("global", LiveStatus.Live)]);
 
         Assert.That(result.Channel, Is.EqualTo("followed"));
         Assert.That(result.Tier, Is.EqualTo(SelectionTier.Personal));
@@ -101,28 +46,67 @@ public sealed class ScheduleAndSelectionTests
     }
 
     [Test]
-    public void LegacyAnyFallbackNeverSelectsNonFollowedChannels()
+    public void FallsBackToAnyLiveTwitchChannelWhenNoFollowedChannelsAreLive()
     {
-        var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "offline", ScheduleChannels.AnyFollowing, "any" },
-            new[] { new Candidate("1", "offline", LiveStatus.Offline) },
-            new[] { new Candidate("2", "followed", LiveStatus.Offline) }, null);
+        var result = Select(
+            ["first", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Offline)],
+            [Candidate("followed", LiveStatus.Offline)],
+            [Candidate("global", LiveStatus.Live)]);
 
-        Assert.That(result.Channel, Is.Null);
-        Assert.That(result.Reason, Is.EqualTo("no_live_candidate"));
+        Assert.That(result.Channel, Is.EqualTo("global"));
+        Assert.That(result.Tier, Is.EqualTo(SelectionTier.TwitchWide));
+        Assert.That(result.Reason, Is.EqualTo("any_twitch_live"));
     }
 
     [Test]
-    public void OfflineCurrentChannelReevaluatesOrderedFallbacks()
+    public void UnknownPriorityOrFallbackStatusDoesNotFallThrough()
     {
-        var result = new SelectionEngine(new FixedRandom(0)).Select(
-            new[] { "first", "second", ScheduleChannels.AnyFollowing, "any" },
-            new[] { new Candidate("1", "first", LiveStatus.Offline), new Candidate("2", "second", LiveStatus.Live) },
-            Array.Empty<Candidate>(), "first");
+        var priorityUnknown = Select(["first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Unknown), Candidate("second", LiveStatus.Live)], [], [Candidate("global", LiveStatus.Live)]);
+        var followsUnknown = Select(["first", ScheduleChannels.AnyFollowing, ScheduleChannels.Any],
+            [Candidate("first", LiveStatus.Offline)], [], [Candidate("global", LiveStatus.Live)], followingComplete: false);
 
-        Assert.That(result.Channel, Is.EqualTo("second"));
-        Assert.That(result.Tier, Is.EqualTo(SelectionTier.Scheduled));
+        Assert.That(priorityUnknown.Channel, Is.Null);
+        Assert.That(priorityUnknown.Reason, Is.EqualTo("priority_channel_status_unknown"));
+        Assert.That(followsUnknown.Channel, Is.Null);
+        Assert.That(followsUnknown.Reason, Is.EqualTo("any_following_status_unknown"));
     }
+
+    [Test]
+    public void KeepsCurrentLiveRandomFallbackInsteadOfRedrawingEveryMinute()
+    {
+        var result = Select([ScheduleChannels.AnyFollowing, ScheduleChannels.Any], [],
+            [Candidate("first", LiveStatus.Live), Candidate("current", LiveStatus.Live)], [], current: "current");
+
+        Assert.That(result.Channel, Is.EqualTo("current"));
+    }
+
+    [Test]
+    public void NormalizationAlwaysAppendsAutomaticFallbacksInOrder()
+    {
+        Assert.That(ScheduleChannels.Normalize([" First ", "second", "first", ScheduleChannels.Any]),
+            Is.EqualTo(new[] { "first", "second", ScheduleChannels.AnyFollowing, ScheduleChannels.Any }));
+    }
+
+    [Test]
+    public void ValidationRejectsDuplicateAndInvalidTwitchLogins()
+    {
+        var errors = ScheduleValidation.Validate(["alpha", "ALPHA", "bad-login"]);
+        Assert.That(errors, Has.Count.EqualTo(2));
+    }
+
+    private static SelectionResult Select(
+        IReadOnlyList<string> channels,
+        IReadOnlyList<Candidate> configured,
+        IReadOnlyList<Candidate> following,
+        IReadOnlyList<Candidate> twitchWide,
+        bool followingComplete = true,
+        bool twitchWideComplete = true,
+        string? current = null) =>
+        new SelectionEngine(new FixedRandom(0)).Select(channels, configured, following, twitchWide, followingComplete, twitchWideComplete, current);
+
+    private static Candidate Candidate(string login, LiveStatus status) => new(login, login, status);
 
     private sealed class FixedRandom(int value) : IRandomSource
     {

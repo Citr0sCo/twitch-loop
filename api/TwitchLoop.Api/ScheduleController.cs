@@ -5,30 +5,24 @@ using TwitchLoop.Infrastructure;
 
 namespace TwitchLoop.Api;
 
-public sealed record ScheduleSlotRequest(string Id, bool Enabled, string StartTime, IReadOnlyList<string> Channels);
-
 [ApiController]
 [Authorize]
 [Route("api/schedule")]
 public sealed class ScheduleController(SqliteStore store) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Get(CancellationToken cancellationToken) => Ok(new { version = 1, slots = await store.GetScheduleAsync(cancellationToken) });
+    public async Task<IActionResult> Get(CancellationToken cancellationToken) => Ok(new { version = 1, channels = await store.GetScheduleAsync(cancellationToken) });
 
     [HttpPut]
     public async Task<IActionResult> Put([FromBody] SchedulePutRequest request, CancellationToken cancellationToken)
     {
-        var slots = new List<ScheduleSlot>();
-        foreach (var item in request.Slots)
-        {
-            if (!TimeOnly.TryParseExact(item.StartTime, "HH:mm", out var time)) return BadRequest(new { error = "invalid_start_time", item.Id });
-            slots.Add(new ScheduleSlot(item.Id, item.Enabled, time, ScheduleChannels.Normalize(item.Channels)));
-        }
-        var errors = ScheduleValidation.Validate(slots);
+        var channels = request.Channels ?? [];
+        var errors = ScheduleValidation.Validate(channels);
         if (errors.Count > 0) return BadRequest(new { error = "invalid_schedule", errors });
-        await store.SaveScheduleAsync(slots, request.Version, request.Source ?? "database", cancellationToken);
-        return Ok(new { version = request.Version + 1, slots });
+        var normalized = ScheduleChannels.Normalize(channels);
+        await store.SaveScheduleAsync(normalized, request.Version, request.Source ?? "database", cancellationToken);
+        return Ok(new { version = request.Version + 1, channels = normalized });
     }
 }
 
-public sealed record SchedulePutRequest(int Version, IReadOnlyList<ScheduleSlotRequest> Slots, string? Source);
+public sealed record SchedulePutRequest(int Version, IReadOnlyList<string>? Channels, string? Source);
