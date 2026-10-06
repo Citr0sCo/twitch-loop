@@ -3,12 +3,14 @@ import { Injectable } from '@angular/core';
 interface TwitchPlayerInstance {
   addEventListener(event: string, callback: () => void): void;
   setChannel(channel: string): void;
+  setVolume(volume: number): void;
   play(): void;
   destroy(): void;
 }
 
 interface TwitchPlayerConstructor {
   new (element: string, options: Record<string, unknown>): TwitchPlayerInstance;
+  READY: string;
   PLAYING: string;
   PLAYBACK_BLOCKED: string;
 }
@@ -28,7 +30,8 @@ export class PlayerService {
     await this.loadSdk();
     this.player?.destroy();
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
-    this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: true });
+    this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: false });
+    this.player.addEventListener(window.Twitch.Player.READY, () => this.player?.setVolume(1));
     this.player.addEventListener(window.Twitch.Player.PLAYING, () => this.onPlaying?.());
     this.player.addEventListener(window.Twitch.Player.PLAYBACK_BLOCKED, () => this.onPlaybackBlocked?.());
   }
