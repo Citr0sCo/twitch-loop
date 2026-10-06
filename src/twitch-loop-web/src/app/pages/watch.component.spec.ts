@@ -42,18 +42,13 @@ describe('WatchComponent', () => {
   });
 
   it('starts playback automatically on a fresh Watch visit', async () => {
-    wakeLock.request.and.callFake(() => {
-      wakeLock.active.and.returnValue(true);
-      return Promise.resolve(true);
-    });
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
-    const wakeLockPill = fixture.nativeElement.querySelector('.wake-lock-pill') as HTMLElement;
-    expect(wakeLockPill.classList.contains('available')).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.wake-lock-pill')).toBeNull();
     const http = TestBed.inject(HttpTestingController);
     flushPriorityStatus(http, [
       { login: 'first', isLive: false },
-      { login: 'second', isLive: true },
+      { login: 'second', isLive: null },
       { login: 'third', isLive: true }
     ]);
     const scheduledSession = {
@@ -72,6 +67,8 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.querySelector('.player-shell .player-placeholder')).toBeNull();
     expect(fixture.nativeElement.querySelector('.playback-status')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('aside')).toBeNull();
+    const selectedPriority = fixture.nativeElement.querySelector('.channel-priorities li.current') as HTMLElement;
+    expect(selectedPriority.querySelector('.channel-state')?.textContent).toContain('Checking');
     player.setOnPlaying.calls.mostRecent().args[0]?.();
     await fixture.whenStable();
     expect(fixture.componentInstance.session?.state).toBe('playing');
@@ -80,13 +77,8 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Offline');
     expect(fixture.nativeElement.textContent).toContain('Live');
     expect(fixture.nativeElement.querySelector('.channel-priorities .section-heading .now-playing')).toBeNull();
-
-    expect(wakeLockPill.textContent.trim()).toBe('Wake Lock');
-    expect(wakeLockPill.classList.contains('active')).toBeTrue();
-    expect(wakeLockPill.getAttribute('title')).toBe('Keep this page visible for the most reliable handoffs.');
-    expect(wakeLockPill.textContent).not.toContain('Keep this page visible');
-    wakeLock.supported.and.returnValue(false);
-    expect(fixture.componentInstance.wakeLockStatus).toBe('unavailable');
+    expect(selectedPriority.querySelector('.channel-state.live')?.textContent).toContain('Live');
+    expect(fixture.nativeElement.querySelector('.wake-lock-pill')).toBeNull();
 
     expect(sessionStorage.getItem('twitch-loop-session')).toBe('scheduled-session');
     fixture.destroy();
@@ -111,7 +103,9 @@ describe('WatchComponent', () => {
     expect(row.textContent).toContain('followed_stream');
     expect(row.textContent).toContain('Randomly chosen from your live followed channels');
     expect(row.querySelector('.channel-state.live')?.textContent).toContain('Live');
-    expect(fixture.nativeElement.querySelector('.channel-priorities').textContent).toContain('Last checked 06:00');
+    const priorityHeading = fixture.nativeElement.querySelector('.channel-priorities .section-heading') as HTMLElement;
+    expect(priorityHeading.querySelector('.last-refreshed')?.textContent).toContain('Last refreshed 06:00');
+    expect(priorityHeading.lastElementChild?.classList.contains('last-refreshed')).toBeTrue();
     fixture.componentInstance.priorityStatus = { ...fixture.componentInstance.priorityStatus, checkedAt: '2026-10-06T23:30:00Z' };
     expect(fixture.componentInstance.formatLastChecked()).toBe('00:30');
     fixture.componentInstance.priorityStatus = { ...fixture.componentInstance.priorityStatus, checkedAt: '2026-10-06T05:00:00Z', timeZone: 'America/Los_Angeles' };
