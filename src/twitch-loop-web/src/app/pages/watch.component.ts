@@ -1,14 +1,14 @@
 import { CommonModule, DOCUMENT } from '@angular/common';
-import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { FormsModule } from '@angular/forms';
 import { EMPTY, Subscription, catchError, interval, startWith, switchMap } from 'rxjs';
 import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 
-@Component({ selector: 'tl-watch', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './watch.component.html', styleUrl: './watch.component.scss' })
-export class WatchComponent implements OnInit, OnDestroy {
+@Component({ selector: 'tl-watch', standalone: true, imports: [CommonModule], templateUrl: './watch.component.html', styleUrl: './watch.component.scss' })
+export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('playerAnchor') private playerAnchor?: ElementRef<HTMLElement>;
   private readonly api = inject(ApiService);
   private readonly player = inject(PlayerService);
   private readonly wakeLock = inject(WakeLockService);
@@ -17,7 +17,6 @@ export class WatchComponent implements OnInit, OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
   private pollSubscription: Subscription | null = null;
   private statusSubscription: Subscription | null = null;
-  private pendingChannel: string | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   session: SessionState | null = null;
@@ -25,12 +24,9 @@ export class WatchComponent implements OnInit, OnDestroy {
   priorityStatus: PriorityStatus = { channels: [], checkedAt: null, timeZone: 'Europe/London' };
   playerPlaying = false;
   playbackBlocked = false;
-  manualChannel = '';
-  volume = 80;
-  muted = true;
-  paused = false;
   starting = false;
   theatre = false;
+  cornerPlayer = false;
   message = '';
   error = '';
 
@@ -77,7 +73,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     else this.start();
   }
 
-  start(channel?: string): void {
+  start(): void {
     if (this.starting) return;
     this.starting = true;
     this.playerPlaying = false;
@@ -91,9 +87,6 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.apply(session);
         this.poll(session.sessionId);
         void this.wakeLock.request();
-        const requestedChannel = channel ?? this.pendingChannel;
-        this.pendingChannel = null;
-        if (requestedChannel) this.requestChannel(session.sessionId, requestedChannel);
         this.changeDetector.markForCheck();
       },
       error: () => {
@@ -121,39 +114,23 @@ export class WatchComponent implements OnInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  selectChannel(): void {
-    const channel = this.manualChannel.trim().replace(/^@/, '').toLowerCase();
-    if (!channel) return;
-    if (!/^[a-z0-9_]{1,25}$/.test(channel)) {
-      this.error = 'Enter a valid Twitch channel login.';
-      return;
-    }
-    this.error = '';
-    if (this.starting) {
-      this.pendingChannel = channel;
-      this.manualChannel = '';
-    } else if (this.session && this.session.state !== 'stopped') this.requestChannel(this.session.sessionId, channel);
-    else this.start(channel);
-  }
-
-  reset(): void { this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.player.destroy(); void this.wakeLock.release(); }
-  setVolume(): void { this.player.setVolume(this.volume / 100); }
-  toggleMute(): void { this.muted = !this.muted; this.player.setMuted(this.muted); }
+  reset(): void { this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
     this.document.body.classList.toggle('theatre-mode', this.theatre);
+    this.updateCornerPlayer();
   }
-  nativeFullscreen(): void { void this.player.requestFullscreen().catch(() => this.error = 'Fullscreen is unavailable for the Twitch player.'); }
+
+  ngAfterViewInit(): void { this.updateCornerPlayer(); }
+
+  @HostListener('window:scroll')
+  onScroll(): void { this.updateCornerPlayer(); }
+
+  @HostListener('window:resize')
+  onResize(): void { this.updateCornerPlayer(); }
 
   ngOnDestroy(): void { this.document.body.classList.remove('theatre-mode'); this.pollSubscription?.unsubscribe(); this.statusSubscription?.unsubscribe(); this.player.setOnPlaying(null); this.player.setOnPlaybackBlocked(null); this.player.destroy(); void this.wakeLock.release(); }
-
-  private requestChannel(sessionId: string, channel: string): void {
-    this.api.sessionAction(sessionId, 'selectChannel', channel).subscribe({
-      next: state => { this.apply(state); this.manualChannel = ''; this.error = ''; this.changeDetector.markForCheck(); },
-      error: () => { this.error = 'Could not switch to that Twitch channel.'; this.changeDetector.markForCheck(); }
-    });
-  }
 
   private poll(id: string): void {
     this.pollSubscription?.unsubscribe();
@@ -215,13 +192,24 @@ export class WatchComponent implements OnInit, OnDestroy {
     this.lastRevision = state.revision; this.session = state;
     if (changed) this.chatEmbedUrl = state.channel ? this.createChatEmbedUrl(state.channel) : null;
     if (state.channel && changed) void this.mountOrSwitch(state.channel);
+    this.updateCornerPlayer();
     this.changeDetector.markForCheck();
   }
+
+  private updateCornerPlayer(): void {
+    const bounds = this.playerAnchor?.nativeElement.getBoundingClientRect();
+    const shouldFloat = !this.theatre && !!this.session?.channel && !!bounds && bounds.top < 0;
+    if (shouldFloat === this.cornerPlayer) return;
+    this.cornerPlayer = shouldFloat;
+    this.changeDetector.markForCheck();
+  }
+
 
 
   private createChatEmbedUrl(channel: string): SafeResourceUrl {
     const url = new URL(`https://www.twitch.tv/embed/${encodeURIComponent(channel)}/chat`);
     url.searchParams.set('parent', this.document.location.hostname);
+    url.search = `?darkpopout&${url.searchParams.toString()}`;
     return this.sanitizer.bypassSecurityTrustResourceUrl(url.toString());
   }
 
