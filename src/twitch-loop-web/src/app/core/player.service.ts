@@ -22,15 +22,17 @@ declare global {
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private player: TwitchPlayerInstance | null = null;
+  private currentChannel: string | null = null;
   private loaded: Promise<void> | null = null;
   private onPlaying: (() => void) | null = null;
   private onPlaybackBlocked: (() => void) | null = null;
 
   async mount(elementId: string, channel: string): Promise<void> {
     await this.loadSdk();
-    this.player?.destroy();
+    this.destroy();
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
     this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: false });
+    this.currentChannel = channel;
     this.player.addEventListener(window.Twitch.Player.READY, () => this.player?.setVolume(1));
     this.player.addEventListener(window.Twitch.Player.PLAYING, () => this.onPlaying?.());
     this.player.addEventListener(window.Twitch.Player.PLAYBACK_BLOCKED, () => this.onPlaybackBlocked?.());
@@ -38,9 +40,13 @@ export class PlayerService {
 
   setOnPlaying(callback: (() => void) | null): void { this.onPlaying = callback; }
   setOnPlaybackBlocked(callback: (() => void) | null): void { this.onPlaybackBlocked = callback; }
-  setChannel(channel: string): void { this.player?.setChannel(channel); }
+  setChannel(channel: string): void {
+    if (!this.player || this.currentChannel?.toLowerCase() === channel.toLowerCase()) return;
+    this.player.setChannel(channel);
+    this.currentChannel = channel;
+  }
   play(): void { this.player?.play(); }
-  destroy(): void { this.player?.destroy(); this.player = null; }
+  destroy(): void { this.player?.destroy(); this.player = null; this.currentChannel = null; }
 
   private loadSdk(): Promise<void> {
     if (this.loaded) return this.loaded;

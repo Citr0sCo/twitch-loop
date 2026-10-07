@@ -203,6 +203,40 @@ describe('WatchComponent', () => {
     }
   });
 
+
+  it('does not switch the player when refreshed channel casing changes only', async () => {
+    jasmine.clock().install();
+    sessionStorage.setItem('twitch-loop-session', 'same-channel-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    try {
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      flushPriorityStatus(http);
+      http.expectOne('/api/sessions/same-channel-session/current-stream').flush({
+        sessionId: 'same-channel-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'LiveChannel',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      await fixture.whenStable();
+      player.setOnPlaying.calls.mostRecent().args[0]?.();
+
+      jasmine.clock().tick(15000);
+      flushPriorityStatus(http);
+      http.expectOne('/api/sessions/same-channel-session/current-stream').flush({
+        sessionId: 'same-channel-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'livechannel',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      await fixture.whenStable();
+
+      expect(player.setChannel).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.playerPlaying).toBeTrue();
+    } finally {
+      fixture.destroy();
+      jasmine.clock().uninstall();
+    }
+  });
+
   it('highlights local API waits in amber and clears the warning after recovery', async () => {
     sessionStorage.setItem('twitch-loop-session', 'waiting-session');
     const fixture = TestBed.createComponent(WatchComponent);

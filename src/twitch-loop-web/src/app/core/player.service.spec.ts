@@ -16,13 +16,14 @@ describe('PlayerService', () => {
 
   it('forwards Twitch playing and playback-blocked events', async () => {
     const setVolume = jasmine.createSpy('setVolume');
+    const twitchSetChannel = jasmine.createSpy('setChannel');
     class MockTwitchPlayer {
       static READY = 'ready';
       static PLAYING = 'playing';
       static PLAYBACK_BLOCKED = 'playback_blocked';
       constructor(_element: string, options: Record<string, unknown>) { playerOptions = options; }
       addEventListener(event: string, callback: () => void): void { listeners.set(event, callback); }
-      setChannel(): void {}
+      setChannel(channel: string): void { twitchSetChannel(channel); }
       setVolume(volume: number): void { setVolume(volume); }
       play(): void {}
       destroy(): void {}
@@ -35,6 +36,10 @@ describe('PlayerService', () => {
     service.setOnPlaybackBlocked(onBlocked);
 
     await service.mount('twitch-player', 'yogscast');
+    service.setChannel('YOGSCAST');
+    expect(twitchSetChannel).not.toHaveBeenCalled();
+    service.setChannel('another_channel');
+    expect(twitchSetChannel).toHaveBeenCalledOnceWith('another_channel');
     listeners.get(MockTwitchPlayer.READY)?.();
     listeners.get(MockTwitchPlayer.PLAYING)?.();
     listeners.get(MockTwitchPlayer.PLAYBACK_BLOCKED)?.();
