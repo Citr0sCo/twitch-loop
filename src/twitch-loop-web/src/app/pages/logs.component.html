@@ -1,0 +1,16 @@
+<section class="page-heading">
+  <div><p class="eyebrow">Activity</p><h1>Logs</h1><p>Recent site events, stream selections and browser connections.</p></div>
+  <span class="retention">Most recent 250 events · refreshes every 15 seconds</span>
+</section>
+<div *ngIf="error" class="notice warning" role="status">{{ error }}</div>
+<div *ngIf="loading" class="empty-state" role="status">Loading events…</div>
+<div *ngIf="!loading && !events.length && !error" class="empty-state">No events yet. Events will appear as clients connect and playback activity occurs.</div>
+<ol *ngIf="events.length" class="timeline" aria-label="Recent site events">
+  <li *ngFor="let event of events" class="timeline-item" [ngClass]="category(event.type)">
+    <span class="event-dot" aria-hidden="true"></span>
+    <article class="event-card">
+      <div class="event-heading"><h2>{{ event.summary }}</h2><time [attr.datetime]="event.occurredAt" [title]="event.occurredAt | date:'full'">{{ event.occurredAt | date:'medium' }}</time></div>
+      <p *ngIf="event.details">{{ event.details }}</p>
+    </article>
+  </li>
+</ol>

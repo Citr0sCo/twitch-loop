@@ -31,7 +31,8 @@ public sealed class SessionsController(SqliteStore store, SessionWorker sessionW
     public async Task<IActionResult> Action(string id, [FromBody] SessionAction action, CancellationToken cancellationToken)
     {
         if (action.Name is not ("stop" or "pauseAuto" or "resumeAuto" or "selectChannel")) return BadRequest(new { error = "unsupported_action" });
-        var session = await store.UpdateSessionAsync(id, action.Name, action.Channel, cancellationToken);
+        var reason = action.Name == "selectChannel" ? "Manually selected by the viewer." : null;
+        var session = await store.UpdateSessionAsync(id, action.Name, action.Channel, cancellationToken, selectionReason: reason);
         if (session is null) return NotFound();
         return Ok(ToResponse(session, await store.GetSettingsAsync(cancellationToken)));
     }

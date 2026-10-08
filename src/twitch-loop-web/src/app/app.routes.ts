@@ -3,6 +3,7 @@ import { CanActivateFn, Router, Routes } from '@angular/router';
 import { catchError, map, of } from 'rxjs';
 import { ApiService } from './core/api.service';
 import { ConnectComponent } from './pages/connect.component';
+import { LogsComponent } from './pages/logs.component';
 import { SettingsComponent } from './pages/settings.component';
 import { WatchComponent } from './pages/watch.component';
 
@@ -20,5 +21,6 @@ export const routes: Routes = [
   { path: 'connect', component: ConnectComponent },
   { path: 'watch', component: WatchComponent, canActivate: [authenticatedGuard] },
   { path: 'settings', component: SettingsComponent, canActivate: [authenticatedGuard] },
+  { path: 'logs', component: LogsComponent, canActivate: [authenticatedGuard] },
   { path: '**', redirectTo: 'connect' }
 ];

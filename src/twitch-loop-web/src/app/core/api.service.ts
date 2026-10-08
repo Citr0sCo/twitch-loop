@@ -10,6 +10,7 @@ export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
 export interface PriorityChannelStatus { login: string; isLive: boolean | null; }
 export interface PriorityStatus { channels: PriorityChannelStatus[]; checkedAt: string | null; timeZone: string; }
+export interface SiteEvent { id: number; occurredAt: string; type: string; summary: string; details: string | null; }
 export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
 
 @Injectable({ providedIn: 'root' })
@@ -22,6 +23,9 @@ export class ApiService {
   saveSchedule(schedule: ScheduleResponse): Observable<ScheduleResponse> { return this.http.put<ScheduleResponse>('/api/schedule', schedule); }
   following(): Observable<FollowingResponse> { return this.http.get<FollowingResponse>('/api/channels/following'); }
   priorityStatus(): Observable<PriorityStatus> { return this.http.get<PriorityStatus>('/api/channels/priority-status'); }
+  recentEvents(): Observable<SiteEvent[]> { return this.http.get<SiteEvent[]>('/api/logs'); }
+  clientHeartbeat(clientId: string): Observable<void> { return this.http.post<void>('/api/logs/presence', { clientId }); }
+  playbackStarted(sessionId: string, channel: string): Observable<void> { return this.http.post<void>('/api/logs/playback-started', { sessionId, channel }); }
   logout(): Observable<void> { return this.http.post<void>('/api/auth/logout', {}); }
   startSession(): Observable<SessionState> { return this.http.post<SessionState>('/api/sessions', {}); }
   currentSession(id: string): Observable<SessionState> { return this.http.get<SessionState>(`/api/sessions/${encodeURIComponent(id)}/current-stream`); }

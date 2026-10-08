@@ -7,6 +7,7 @@ namespace TwitchLoop.Infrastructure;
 
 public sealed record StoredSession(string Id, string State, string? Channel, string AutomationMode, string? SelectionTier, int Revision, DateTimeOffset StartedAt, DateTimeOffset ExpiresAt);
 public sealed record StoredConnection(string? TwitchUserId, string EncryptedAccessToken, string EncryptedRefreshToken, string Scopes, DateTimeOffset ExpiresAt);
+public sealed record SiteEvent(long Id, DateTimeOffset OccurredAt, string Type, string Summary, string? Details);
 
 public sealed class SqliteStore
 {
@@ -40,6 +41,9 @@ public sealed class SqliteStore
                 CREATE TABLE IF NOT EXISTS schedule (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, json TEXT NOT NULL, source TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, state TEXT NOT NULL, channel TEXT NULL, automation_mode TEXT NOT NULL, selection_tier TEXT NULL, revision INTEGER NOT NULL, started_at TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS twitch_connection (id INTEGER PRIMARY KEY CHECK (id = 1), twitch_user_id TEXT NULL, encrypted_access_token TEXT NOT NULL, encrypted_refresh_token TEXT NOT NULL, scopes TEXT NOT NULL, expires_at TEXT NOT NULL, validated_at TEXT NULL);
+                CREATE TABLE IF NOT EXISTS site_events (id INTEGER PRIMARY KEY AUTOINCREMENT, occurred_at TEXT NOT NULL, type TEXT NOT NULL, summary TEXT NOT NULL, details TEXT NULL);
+                CREATE INDEX IF NOT EXISTS ix_site_events_occurred_at ON site_events(occurred_at DESC, id DESC);
+                CREATE TABLE IF NOT EXISTS client_presence (client_id TEXT PRIMARY KEY, browser TEXT NOT NULL, device TEXT NOT NULL, connected_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, disconnected_at TEXT NULL);
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken);
             await using var schemaCommand = connection.CreateCommand();
@@ -71,6 +75,113 @@ public sealed class SqliteStore
         settings.Version = expectedVersion + 1;
         await WriteJsonAsync("settings", settings.Version, JsonSerializer.Serialize(settings, JsonOptions), settings.Source, cancellationToken);
         return settings;
+    }
+
+    public async Task RecordEventAsync(string type, string summary, string? details, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = Open();
+            await connection.OpenAsync(cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await InsertEventAsync(connection, transaction, type, summary, details, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<IReadOnlyList<SiteEvent>> GetRecentEventsAsync(int limit, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = Open();
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT id,occurred_at,type,summary,details FROM site_events ORDER BY occurred_at DESC,id DESC LIMIT $limit";
+            command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            var events = new List<SiteEvent>();
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                events.Add(new SiteEvent(reader.GetInt64(0), DateTimeOffset.Parse(reader.GetString(1)), reader.GetString(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4)));
+            }
+            return events;
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task HeartbeatClientAsync(string clientId, string browser, string device, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = Open();
+            await connection.OpenAsync(cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            await using var query = connection.CreateCommand();
+            query.Transaction = transaction;
+            query.CommandText = "SELECT disconnected_at FROM client_presence WHERE client_id=$clientId";
+            query.Parameters.AddWithValue("$clientId", clientId);
+            var disconnectedAt = await query.ExecuteScalarAsync(cancellationToken);
+            var isNew = disconnectedAt is null;
+            var wasDisconnected = disconnectedAt is not null && disconnectedAt is not DBNull;
+
+            await using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "INSERT INTO client_presence (client_id,browser,device,connected_at,last_seen_at,disconnected_at) VALUES ($clientId,$browser,$device,$now,$now,NULL) ON CONFLICT(client_id) DO UPDATE SET browser=$browser,device=$device,last_seen_at=$now,disconnected_at=NULL,connected_at=CASE WHEN client_presence.disconnected_at IS NULL THEN client_presence.connected_at ELSE $now END";
+            update.Parameters.AddWithValue("$clientId", clientId);
+            update.Parameters.AddWithValue("$browser", browser);
+            update.Parameters.AddWithValue("$device", device);
+            update.Parameters.AddWithValue("$now", now.ToString("O"));
+            await update.ExecuteNonQueryAsync(cancellationToken);
+
+            if (isNew || wasDisconnected)
+            {
+                var eventType = wasDisconnected ? "client_reconnected" : "client_connected";
+                var summary = wasDisconnected ? "Browser reconnected" : "Browser connected";
+                await InsertEventAsync(connection, transaction, eventType, summary, $"{browser} on {device}", cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task DisconnectStaleClientsAsync(DateTimeOffset staleBefore, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = Open();
+            await connection.OpenAsync(cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await using var query = connection.CreateCommand();
+            query.Transaction = transaction;
+            query.CommandText = "SELECT client_id,browser,device FROM client_presence WHERE disconnected_at IS NULL AND last_seen_at < $staleBefore";
+            query.Parameters.AddWithValue("$staleBefore", staleBefore.ToString("O"));
+            var stale = new List<(string Id, string Browser, string Device)>();
+            await using (var reader = await query.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken)) stale.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            }
+
+            foreach (var client in stale)
+            {
+                await using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = "UPDATE client_presence SET disconnected_at=$now WHERE client_id=$clientId AND disconnected_at IS NULL";
+                update.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                update.Parameters.AddWithValue("$clientId", client.Id);
+                if (await update.ExecuteNonQueryAsync(cancellationToken) > 0)
+                {
+                    await InsertEventAsync(connection, transaction, "client_disconnected", "Browser disconnected", $"{client.Browser} on {client.Device}; heartbeat expired", cancellationToken);
+                }
+            }
+            await transaction.CommitAsync(cancellationToken);
+        }
+        finally { gate.Release(); }
     }
 
     public async Task<IReadOnlyList<string>> GetScheduleAsync(CancellationToken cancellationToken)
@@ -108,10 +219,14 @@ public sealed class SqliteStore
         {
             await using var connection = Open();
             await connection.OpenAsync(cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
             await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
             command.CommandText = "INSERT INTO sessions (id,state,channel,automation_mode,selection_tier,revision,started_at,expires_at) VALUES ($id,$state,$channel,$mode,$tier,$revision,$started,$expires)";
             AddSessionParameters(command, session);
             await command.ExecuteNonQueryAsync(cancellationToken);
+            await InsertEventAsync(connection, transaction, "session_started", "Playback session started", "Searching for a live streamer", cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return session;
         }
         finally { gate.Release(); }
@@ -216,7 +331,7 @@ public sealed class SqliteStore
         finally { gate.Release(); }
     }
 
-    public async Task<StoredSession?> UpdateSessionAsync(string id, string action, string? channel, CancellationToken cancellationToken, string? selectionTier = null)
+    public async Task<StoredSession?> UpdateSessionAsync(string id, string action, string? channel, CancellationToken cancellationToken, string? selectionTier = null, string? selectionReason = null)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -251,6 +366,11 @@ public sealed class SqliteStore
             command.Parameters.AddWithValue("$tier", (object?)next.SelectionTier ?? DBNull.Value);
             command.Parameters.AddWithValue("$revision", next.Revision);
             await command.ExecuteNonQueryAsync(cancellationToken);
+            var eventData = GetSessionEvent(current, next, action, selectionReason);
+            if (eventData is not null)
+            {
+                await InsertEventAsync(connection, transaction, eventData.Value.Type, eventData.Value.Summary, eventData.Value.Details, cancellationToken);
+            }
             await transaction.CommitAsync(cancellationToken);
             return next;
         }
@@ -258,6 +378,43 @@ public sealed class SqliteStore
     }
 
     private SqliteConnection Open() => new(connectionString);
+
+    private static async Task InsertEventAsync(SqliteConnection connection, SqliteTransaction transaction, string type, string summary, string? details, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO site_events (occurred_at,type,summary,details) VALUES ($occurredAt,$type,$summary,$details); DELETE FROM site_events WHERE id NOT IN (SELECT id FROM site_events ORDER BY id DESC LIMIT 10000)";
+        command.Parameters.AddWithValue("$occurredAt", DateTimeOffset.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("$type", type);
+        command.Parameters.AddWithValue("$summary", summary);
+        command.Parameters.AddWithValue("$details", (object?)details ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static (string Type, string Summary, string? Details)? GetSessionEvent(StoredSession current, StoredSession next, string action, string? reason)
+    {
+        if (action == "stop" && current.State != "stopped")
+        {
+            return ("session_stopped", "Playback session stopped", current.Channel is null ? null : $"Stopped while playing {current.Channel}");
+        }
+        if (!string.Equals(current.Channel, next.Channel, StringComparison.OrdinalIgnoreCase))
+        {
+            if (next.Channel is not null)
+            {
+                return current.Channel is null
+                    ? ("stream_selected", $"Selected stream: {next.Channel}", reason)
+                    : ("stream_changed", $"Switched from {current.Channel} to {next.Channel}", reason);
+            }
+            if (current.Channel is not null) return ("stream_ended", $"Stream ended: {current.Channel}", reason);
+        }
+
+        return action switch
+        {
+            "pauseAuto" when current.AutomationMode != "paused" => ("automation_paused", "Automatic stream selection paused", null),
+            "resumeAuto" when current.AutomationMode != "auto" => ("automation_resumed", "Automatic stream selection resumed", null),
+            _ => null
+        };
+    }
 
     private async Task<string?> ReadJsonAsync(string query, CancellationToken cancellationToken)
     {

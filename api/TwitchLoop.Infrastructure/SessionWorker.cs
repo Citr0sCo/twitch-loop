@@ -63,13 +63,43 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
             if (decision.Channel is not null &&
                 (!string.Equals(decision.Channel, session.Channel, StringComparison.OrdinalIgnoreCase) || tier != session.SelectionTier))
             {
-                await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken, tier);
+                var reason = ExplainSelection(decision.Reason, session.Channel, decision.Channel, live);
+                await store.UpdateSessionAsync(session.Id, "autoSelect", decision.Channel, cancellationToken, tier, reason);
             }
             else if (decision.Channel is null && session.Channel is not null && !live.Contains(session.Channel))
             {
-                await store.UpdateSessionAsync(session.Id, "autoSelect", null, cancellationToken);
+                var reason = decision.Reason switch
+                {
+                    "any_following_status_unknown" => $"{session.Channel} went offline; followed-stream status is unavailable, so no fallback could be confirmed.",
+                    "any_twitch_status_unknown" => $"{session.Channel} went offline; Twitch-wide fallback status is unavailable, so no fallback could be confirmed.",
+                    _ => $"{session.Channel} went offline; all configured streamers and available fallbacks are offline."
+                };
+                await store.UpdateSessionAsync(session.Id, "autoSelect", null, cancellationToken, selectionReason: reason);
             }
             logger.LogDebug("Evaluated session {SessionId}: {Reason}", session.Id, decision.Reason);
         }
+    }
+
+    private static string ExplainSelection(string reason, string? previousChannel, string? nextChannel, IReadOnlySet<string> live)
+    {
+        if (previousChannel is not null && !live.Contains(previousChannel))
+        {
+            return reason switch
+            {
+                "priority_channel_live" => $"{previousChannel} went offline; a higher-priority configured streamer ({nextChannel}) is live.",
+                "any_following_live" => $"{previousChannel} went offline; no configured streamer is live, so a live followed streamer ({nextChannel}) is being used.",
+                "any_twitch_live" => $"{previousChannel} went offline; no configured or followed streamer is live, so {nextChannel} is being used as the Twitch-wide fallback.",
+                _ => $"{previousChannel} went offline; {nextChannel} was selected by the configured priority rules."
+            };
+        }
+
+        return reason switch
+        {
+            "priority_channel_live" => previousChannel is null ? $"Highest-priority configured streamer {nextChannel} is live." : $"Higher-priority configured streamer {nextChannel} went live.",
+            "any_following_live" => $"No higher-priority configured streamer is live; selected live followed streamer {nextChannel}.",
+            "any_twitch_live" => $"No configured or followed streamer is live; selected Twitch-wide fallback {nextChannel}.",
+            "no_live_candidate" => "All configured streamers and available fallbacks are offline.",
+            _ => $"Selected {nextChannel} using the configured priority rules."
+        };
     }
 }
