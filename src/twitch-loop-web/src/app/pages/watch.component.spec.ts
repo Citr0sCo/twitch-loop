@@ -75,6 +75,7 @@ describe('WatchComponent', () => {
     const selectedPriority = fixture.nativeElement.querySelector('.channel-priorities li.current') as HTMLElement;
     expect(selectedPriority.querySelector('.channel-state')?.textContent).toContain('Checking');
     player.setOnPlaying.calls.mostRecent().args[0]?.();
+    http.expectOne('/api/logs/playback-started').flush(null);
     await fixture.whenStable();
     expect(fixture.componentInstance.session?.state).toBe('playing');
     expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
@@ -219,6 +220,7 @@ describe('WatchComponent', () => {
       });
       await fixture.whenStable();
       player.setOnPlaying.calls.mostRecent().args[0]?.();
+    http.expectOne('/api/logs/playback-started').flush(null);
 
       jasmine.clock().tick(15000);
       flushPriorityStatus(http);
@@ -300,6 +302,7 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.querySelector('.player-shell .playback-status')).toBeNull();
 
     player.setOnPlaying.calls.mostRecent().args[0]?.();
+    http.expectOne('/api/logs/playback-started').flush(null);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.fallback-channel .playing-indicator')?.textContent).toContain('Currently playing');
     fixture.destroy();
@@ -419,6 +422,7 @@ describe('WatchComponent', () => {
     expect(player.play).toHaveBeenCalled();
 
     player.setOnPlaying.calls.mostRecent().args[0]?.();
+    http.expectOne('/api/logs/playback-started').flush(null);
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('.player-placeholder')).toBeNull();
     expect(fixture.componentInstance.playbackState).toBe('playing');

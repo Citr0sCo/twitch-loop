@@ -21,6 +21,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastRevision = 0;
   private playerMounted = false;
+  private lastLoggedPlayingChannel: string | null = null;
   session: SessionState | null = null;
   chatEmbedUrl: SafeResourceUrl | null = null;
   priorityStatus: PriorityStatus = { channels: [], checkedAt: null, timeZone: 'Europe/London' };
@@ -237,7 +238,13 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playerPlaying = true;
     this.playbackBlocked = false;
     this.starting = false;
-    if (this.session) this.session = { ...this.session, state: 'playing' };
+    if (this.session) {
+      this.session = { ...this.session, state: 'playing' };
+      if (this.session.channel && this.lastLoggedPlayingChannel?.toLowerCase() !== this.session.channel.toLowerCase()) {
+        this.lastLoggedPlayingChannel = this.session.channel;
+        this.api.playbackStarted(this.session.sessionId, this.session.channel).subscribe({ error: () => undefined });
+      }
+    }
   }
 
   private apply(state: SessionState): void {
@@ -247,6 +254,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     if (changed) {
       this.playerPlaying = false;
       this.playbackBlocked = false;
+      this.lastLoggedPlayingChannel = null;
     }
     this.lastRevision = state.revision; this.session = state;
     if (changed) this.chatEmbedUrl = state.channel ? this.createChatEmbedUrl(state.channel) : null;

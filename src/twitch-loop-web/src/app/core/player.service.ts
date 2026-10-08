@@ -4,6 +4,9 @@ interface TwitchPlayerInstance {
   addEventListener(event: string, callback: () => void): void;
   setChannel(channel: string): void;
   setVolume(volume: number): void;
+  getQualities(): string[];
+  getQuality(): string;
+  setQuality(quality: string): void;
   play(): void;
   destroy(): void;
 }
@@ -33,8 +36,14 @@ export class PlayerService {
     if (!window.Twitch) throw new Error('Twitch player SDK is unavailable');
     this.player = new window.Twitch.Player(elementId, { channel, width: '100%', height: '100%', parent: [window.location.hostname], autoplay: true, muted: false });
     this.currentChannel = channel;
-    this.player.addEventListener(window.Twitch.Player.READY, () => this.player?.setVolume(1));
-    this.player.addEventListener(window.Twitch.Player.PLAYING, () => this.onPlaying?.());
+    this.player.addEventListener(window.Twitch.Player.READY, () => {
+      this.player?.setVolume(1);
+      this.selectHighestQuality();
+    });
+    this.player.addEventListener(window.Twitch.Player.PLAYING, () => {
+      this.selectHighestQuality();
+      this.onPlaying?.();
+    });
     this.player.addEventListener(window.Twitch.Player.PLAYBACK_BLOCKED, () => this.onPlaybackBlocked?.());
   }
 
@@ -47,6 +56,26 @@ export class PlayerService {
   }
   play(): void { this.player?.play(); }
   destroy(): void { this.player?.destroy(); this.player = null; this.currentChannel = null; }
+
+  private selectHighestQuality(): void {
+    if (!this.player) return;
+    try {
+      const qualities = this.player.getQualities();
+      const quality = qualities.includes('chunked')
+        ? 'chunked'
+        : qualities.filter(value => /\d+p\d*/i.test(value)).sort((left, right) => {
+          const leftResolution = Number(/(\d+)p/i.exec(left)?.[1] ?? 0);
+          const rightResolution = Number(/(\d+)p/i.exec(right)?.[1] ?? 0);
+          if (leftResolution !== rightResolution) return rightResolution - leftResolution;
+          const leftFrameRate = Number(/p\d+/i.exec(left)?.[0].slice(1) ?? 0);
+          const rightFrameRate = Number(/p\d+/i.exec(right)?.[0].slice(1) ?? 0);
+          return rightFrameRate - leftFrameRate;
+        })[0];
+      if (quality && this.player.getQuality() !== quality) this.player.setQuality(quality);
+    } catch {
+      // Twitch can report qualities before they are available during stream changes.
+    }
+  }
 
   private loadSdk(): Promise<void> {
     if (this.loaded) return this.loaded;

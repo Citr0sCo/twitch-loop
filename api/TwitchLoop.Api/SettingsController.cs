@@ -22,6 +22,8 @@ public sealed class SettingsController(SqliteStore store) : ControllerBase
         if (errors.Count > 0) return BadRequest(new { errors });
         var current = await store.GetSettingsAsync(cancellationToken);
         if (expectedVersion.HasValue && expectedVersion.Value != current.Version) return Conflict(new { error = "settings_version_conflict", version = current.Version });
-        return Ok(await store.SaveSettingsAsync(settings, current.Version, cancellationToken));
+        var saved = await store.SaveSettingsAsync(settings, current.Version, cancellationToken);
+        await store.RecordEventAsync("settings_updated", "Playback settings updated", null, cancellationToken);
+        return Ok(saved);
     }
 }

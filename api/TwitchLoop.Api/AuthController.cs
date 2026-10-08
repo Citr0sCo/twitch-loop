@@ -83,6 +83,7 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
         var allowedOwner = configuration["APP_ALLOWED_OWNER_TWITCH_LOGIN"]?.Trim();
         if (string.IsNullOrWhiteSpace(allowedOwner) || !string.Equals(allowedOwner, user.Login, StringComparison.OrdinalIgnoreCase)) return Redirect("/connect?error=owner_mismatch");
         await store.SaveConnectionAsync(user.Id, tokens.Protect(token.AccessToken), tokens.Protect(token.RefreshToken), "user:read:follows user:read:subscriptions", DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn), cancellationToken);
+        await store.RecordEventAsync("twitch_connected", "Twitch account connected", $"Connected account: {user.Login}", cancellationToken);
         var claims = new[]
         {
             new Claim("twitch_user_id", user.Id),
@@ -96,11 +97,22 @@ public sealed class AuthController(IConfiguration configuration, IHttpClientFact
 
     [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout() { await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        await store.RecordEventAsync("owner_logged_out", "Owner logged out", null, cancellationToken);
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return NoContent();
+    }
 
     [Authorize]
     [HttpPost("disconnect")]
-    public async Task<IActionResult> Disconnect(CancellationToken cancellationToken) { await store.DeleteConnectionAsync(cancellationToken); await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
+    public async Task<IActionResult> Disconnect(CancellationToken cancellationToken)
+    {
+        await store.DeleteConnectionAsync(cancellationToken);
+        await store.RecordEventAsync("twitch_disconnected", "Twitch account disconnected", null, cancellationToken);
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return NoContent();
+    }
 
     private sealed record TokenResponse([property: System.Text.Json.Serialization.JsonPropertyName("access_token")] string AccessToken, [property: System.Text.Json.Serialization.JsonPropertyName("refresh_token")] string RefreshToken, [property: System.Text.Json.Serialization.JsonPropertyName("expires_in")] int ExpiresIn);
     private sealed record UserResponse([property: System.Text.Json.Serialization.JsonPropertyName("data")] List<TwitchUser> Data);

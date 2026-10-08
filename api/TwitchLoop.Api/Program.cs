@@ -1,3 +1,4 @@
+using TwitchLoop.Api;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
@@ -47,6 +48,7 @@ builder.Services.AddSingleton<TwitchLoop.Core.IClock, TwitchLoop.Core.SystemCloc
 builder.Services.AddSingleton<TwitchLoop.Core.IRandomSource, TwitchLoop.Core.SystemRandomSource>();
 builder.Services.AddSingleton<SessionWorker>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionWorker>());
+builder.Services.AddHostedService<ClientPresenceWorker>();
 
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
