@@ -369,6 +369,29 @@ describe('WatchComponent', () => {
 
 
 
+  it('restores theatre mode after Watch reloads', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'restored-session');
+    sessionStorage.setItem('twitch-loop-theatre', 'true');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
+    http.expectOne('/api/sessions/restored-session/current-stream').flush({
+      sessionId: 'restored-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.theatre).toBeTrue();
+    expect(document.body.classList.contains('theatre-mode')).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.player-shell').classList.contains('theatre')).toBeTrue();
+    fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+    sessionStorage.removeItem('twitch-loop-theatre');
+  });
+
   it('automatically starts a fresh session when the saved session is stopped', async () => {
     sessionStorage.setItem('twitch-loop-session', 'stopped-session');
     const fixture = TestBed.createComponent(WatchComponent);

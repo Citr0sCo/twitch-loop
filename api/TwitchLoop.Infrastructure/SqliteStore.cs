@@ -381,10 +381,12 @@ public sealed class SqliteStore
 
     private static async Task InsertEventAsync(SqliteConnection connection, SqliteTransaction transaction, string type, string summary, string? details, CancellationToken cancellationToken)
     {
+        var occurredAt = DateTimeOffset.UtcNow;
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "INSERT INTO site_events (occurred_at,type,summary,details) VALUES ($occurredAt,$type,$summary,$details); DELETE FROM site_events WHERE id NOT IN (SELECT id FROM site_events ORDER BY id DESC LIMIT 10000)";
-        command.Parameters.AddWithValue("$occurredAt", DateTimeOffset.UtcNow.ToString("O"));
+        command.CommandText = "INSERT INTO site_events (occurred_at,type,summary,details) SELECT $occurredAt,$type,$summary,$details WHERE NOT EXISTS (SELECT 1 FROM site_events WHERE type=$type AND summary=$summary AND details IS $details AND occurred_at >= $dedupeAfter); DELETE FROM site_events WHERE id NOT IN (SELECT id FROM site_events ORDER BY id DESC LIMIT 10000)";
+        command.Parameters.AddWithValue("$occurredAt", occurredAt.ToString("O"));
+        command.Parameters.AddWithValue("$dedupeAfter", occurredAt.AddSeconds(-5).ToString("O"));
         command.Parameters.AddWithValue("$type", type);
         command.Parameters.AddWithValue("$summary", summary);
         command.Parameters.AddWithValue("$details", (object?)details ?? DBNull.Value);
