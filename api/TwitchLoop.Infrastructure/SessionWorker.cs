@@ -29,19 +29,50 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
         var sessions = await store.GetActiveSessionsAsync(clock.UtcNow, cancellationToken);
         if (sessions.Count == 0) return;
         var connection = await store.GetConnectionAsync(cancellationToken);
-        if (connection is null || connection.ExpiresAt <= clock.UtcNow) return;
+        if (connection is null)
+        {
+            logger.LogWarning("Session evaluation skipped because Twitch is not connected");
+            return;
+        }
+
+        var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
+        if (connection.ExpiresAt <= clock.UtcNow.AddMinutes(2))
+        {
+            var refreshToken = tokens.Unprotect(connection.EncryptedRefreshToken);
+            var refresh = await twitch.RefreshAccessTokenAsync(refreshToken, cancellationToken);
+            if (refresh.Tokens is null)
+            {
+                logger.LogWarning("Session evaluation skipped because the expired or near-expiry Twitch access token could not be refreshed; status {StatusCode}", refresh.FailureStatusCode);
+                return;
+            }
+
+            accessToken = refresh.Tokens.AccessToken;
+            await store.SaveConnectionAsync(
+                connection.TwitchUserId ?? string.Empty,
+                tokens.Protect(refresh.Tokens.AccessToken),
+                tokens.Protect(refresh.Tokens.RefreshToken),
+                connection.Scopes,
+                refresh.Tokens.ExpiresAt,
+                cancellationToken);
+            logger.LogInformation("Refreshed Twitch credentials before evaluating {SessionCount} active sessions", sessions.Count);
+        }
 
         var priorityChannels = await store.GetScheduleAsync(cancellationToken);
-        var accessToken = tokens.Unprotect(connection.EncryptedAccessToken);
         var followed = string.IsNullOrWhiteSpace(connection.TwitchUserId)
             ? new TwitchApiResult<TwitchFollow>([], false, "missing_user_id")
             : await twitch.GetFollowedChannelsAsync(connection.TwitchUserId, accessToken, cancellationToken);
+        if (!followed.Complete && followed.Error is not "missing_user_id")
+            logger.LogWarning("Followed-channel status is incomplete during session evaluation: {Error}", followed.Error);
         var priorityLogins = priorityChannels.Where(channel => !ScheduleChannels.IsAutomaticFallback(channel)).ToArray();
         var followedLogins = followed.Data.Select(channel => channel.BroadcasterLogin).ToArray();
         var activeLogins = sessions.Select(session => session.Channel).OfType<string>();
         var trackedLogins = priorityLogins.Concat(followedLogins).Concat(activeLogins).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var status = await twitch.GetStreamsAsync(trackedLogins, accessToken, cancellationToken);
-        if (!status.Complete) return;
+        if (!status.Complete)
+        {
+            logger.LogWarning("Session evaluation skipped because stream status is incomplete: {Error}", status.Error);
+            return;
+        }
 
         var live = status.Data.Select(stream => stream.UserLogin).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var priorityCandidates = priorityLogins.Select(login => new Candidate(login, login, live.Contains(login) ? LiveStatus.Live : LiveStatus.Offline)).ToArray();

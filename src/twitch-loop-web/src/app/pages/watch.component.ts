@@ -76,6 +76,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnInit(): void {
     this.player.setOnPlaying(() => this.refreshFromPlayer(() => this.onPlayerPlaying()));
     this.player.setOnPlaybackBlocked(() => this.refreshFromPlayer(() => this.playbackBlocked = true));
+    this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
+    this.document.body.classList.toggle('theatre-mode', this.theatre);
     this.pollPriorityStatus();
     const existing = sessionStorage.getItem('twitch-loop-session');
     if (existing) this.poll(existing);
@@ -153,6 +155,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
+    sessionStorage.setItem('twitch-loop-theatre', String(this.theatre));
     this.document.body.classList.toggle('theatre-mode', this.theatre);
     this.updateCornerPlayer();
   }

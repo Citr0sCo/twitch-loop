@@ -174,4 +174,30 @@ public sealed class SqliteStoreTests
         }
     }
 
+    [Test]
+    public async Task RecordEventSuppressesRecentIdenticalEventsOnly()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "twitch-loop-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:DataDirectory"] = directory
+            }).Build();
+            var store = new SqliteStore(configuration);
+            await store.InitializeAsync();
+            await store.RecordEventAsync("stream_changed", "Switched from hasanabi to theburntpeanut", "hasanabi went offline; theburntpeanut is live.", CancellationToken.None);
+            await store.RecordEventAsync("stream_changed", "Switched from hasanabi to theburntpeanut", "hasanabi went offline; theburntpeanut is live.", CancellationToken.None);
+            await store.RecordEventAsync("stream_changed", "Switched from hasanabi to theburntpeanut", "A distinct transition reason.", CancellationToken.None);
+
+            var events = await store.GetRecentEventsAsync(20, CancellationToken.None);
+            Assert.That(events.Count(item => item.Type == "stream_changed"), Is.EqualTo(2));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }
