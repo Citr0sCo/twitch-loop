@@ -6,6 +6,15 @@
     <span class="status" [class.live]="playerPlaying">{{ playbackState }}</span>
   </section>
 
+  <div *ngIf="session?.channel" class="stream-summary" aria-label="Current live stream details">
+    <strong>{{ currentLiveStream?.name || session.channel }}</strong>
+    <ng-container *ngIf="currentLiveStream as stream">
+      <span>{{ stream.viewerCount | number }} viewers</span>
+      <span *ngIf="formatLiveDuration() as duration">Live for {{ duration }}</span>
+    </ng-container>
+    <span *ngIf="priorityStatus.checkedAt">Last updated {{ formatLastUpdated() }}</span>
+  </div>
+
   <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
   <div *ngIf="message" class="notice warning" role="status">{{ message }}</div>
 
@@ -74,7 +83,15 @@
 </div>
 
 <div *ngIf="theatre" class="theatre-exit-bar">
+  <div *ngIf="session?.channel" class="theatre-stream-meta" aria-label="Current live stream details">
+    <strong>{{ currentLiveStream?.name || session.channel }}</strong>
+    <ng-container *ngIf="currentLiveStream as stream">
+      <span>{{ stream.viewerCount | number }} viewers</span>
+      <span *ngIf="formatLiveDuration() as duration">Live for {{ duration }}</span>
+    </ng-container>
+  </div>
   <button type="button" class="secondary" (click)="toggleTheatre()">
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M14 10 20 4m-6 0h6v6M10 14l-6 6" /></svg>Exit theatre mode
   </button>
+  <span *ngIf="priorityStatus.checkedAt" class="theatre-updated">Last updated {{ formatLastUpdated() }}</span>
 </div>

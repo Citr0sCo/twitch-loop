@@ -19,12 +19,14 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private statusSubscription: Subscription | null = null;
   private startSubscription: Subscription | null = null;
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private recoverySubscription: Subscription | null = null;
   private lastRevision = 0;
   private playerMounted = false;
   private lastLoggedPlayingChannel: string | null = null;
   session: SessionState | null = null;
   chatEmbedUrl: SafeResourceUrl | null = null;
-  priorityStatus: PriorityStatus = { channels: [], checkedAt: null, timeZone: 'Europe/London' };
+  priorityStatus: PriorityStatus = { channels: [], liveStreams: [], checkedAt: null, timeZone: 'Europe/London' };
   playerPlaying = false;
   playbackBlocked = false;
   starting = false;
@@ -37,6 +39,33 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.playerPlaying) return 'playing';
     if (this.playbackBlocked) return 'playback blocked';
     return this.session?.channel ? 'connecting' : this.session?.state || 'stopped';
+  }
+
+  get currentLiveStream(): PriorityStatus['liveStreams'][number] | null {
+    const channel = this.session?.channel?.toLowerCase();
+    return channel ? this.priorityStatus.liveStreams.find(stream => stream.login.toLowerCase() === channel) ?? null : null;
+  }
+
+  formatLiveDuration(): string | null {
+    const startedAt = this.currentLiveStream?.startedAt;
+    if (!startedAt) return null;
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000));
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    const remainingMinutes = minutes % 60;
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${remainingMinutes}m`;
+    return `${remainingMinutes}m`;
+  }
+
+  formatLastUpdated(): string | null {
+    if (!this.priorityStatus.checkedAt) return null;
+    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: this.priorityStatus.timeZone };
+    try {
+      return new Intl.DateTimeFormat(undefined, options).format(new Date(this.priorityStatus.checkedAt));
+    } catch {
+      return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(new Date(this.priorityStatus.checkedAt));
+    }
   }
 
   get isFallbackStream(): boolean {
@@ -79,8 +108,10 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
     this.document.body.classList.toggle('theatre-mode', this.theatre);
     this.pollPriorityStatus();
+    const recovery = sessionStorage.getItem('twitch-loop-recovery-session');
     const existing = sessionStorage.getItem('twitch-loop-session');
-    if (existing) this.poll(existing);
+    if (recovery) this.stopAndStartSession(recovery);
+    else if (existing) this.poll(existing);
     else this.start();
   }
 
@@ -151,7 +182,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  reset(): void { this.clearStartRetry(); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.clearStartRetry(); this.clearRecoveryRetry(); this.recoverySubscription?.unsubscribe(); this.recoverySubscription = null; sessionStorage.removeItem('twitch-loop-recovery-session'); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
@@ -184,6 +215,9 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.document.body.classList.remove('theatre-mode');
     this.clearStartRetry();
+    this.clearRecoveryRetry();
+    this.recoverySubscription?.unsubscribe();
+    this.recoverySubscription = null;
     this.startSubscription?.unsubscribe();
     this.pollSubscription?.unsubscribe();
     this.statusSubscription?.unsubscribe();
@@ -198,17 +232,77 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.pollSubscription = interval(15000).pipe(
       startWith(0),
       switchMap(() => this.api.currentSession(id).pipe(catchError(error => {
-        if (error.status === 404) this.restartSession(id);
+        if (error.status === 404) {
+          sessionStorage.setItem('twitch-loop-recovery-session', id);
+          this.refreshBrowser();
+        } else if (this.isTransientApiFailure(error.status)) this.reloadForRecovery(id);
         else {
-          this.message = 'Waiting for the local API…';
+          this.message = 'Could not refresh the playback session.';
           this.changeDetector.markForCheck();
         }
         return EMPTY;
       })))
     ).subscribe(state => {
+      if (sessionStorage.getItem('twitch-loop-recovery-session') === id) { this.refreshBrowser(); return; }
       if (state.state === 'stopped') this.restartSession(id);
       else this.apply(state);
     });
+  }
+
+  private reloadForRecovery(id: string): void {
+    if (sessionStorage.getItem('twitch-loop-recovery-session') === id) return;
+    sessionStorage.setItem('twitch-loop-recovery-session', id);
+    this.message = 'Waiting for the local API… The page will refresh when it reconnects.';
+    this.changeDetector.markForCheck();
+  }
+
+  private refreshBrowser(): void {
+    this.document.defaultView?.location.reload();
+  }
+
+  private stopAndStartSession(id: string): void {
+    if (this.recoverySubscription) return;
+    this.clearRecoveryRetry();
+    this.message = 'Reconnecting to the local API…';
+    this.recoverySubscription = this.api.sessionAction(id, 'stop').subscribe({
+      next: () => { this.recoverySubscription = null; this.finishSessionRecovery(id); },
+      error: error => {
+        this.recoverySubscription = null;
+        if (error.status === 404) this.finishSessionRecovery(id);
+        else if (this.isTransientApiFailure(error.status)) {
+          this.message = 'Waiting for the local API… Reconnecting in 30 seconds.';
+          this.recoveryRetryTimer = setTimeout(() => {
+            this.recoveryRetryTimer = null;
+            this.stopAndStartSession(id);
+          }, 30000);
+        } else {
+          this.error = 'Could not recover the playback session. Check the server connection.';
+        }
+        this.changeDetector.markForCheck();
+      }
+    });
+  }
+
+  private finishSessionRecovery(id: string): void {
+    if (sessionStorage.getItem('twitch-loop-recovery-session') !== id) return;
+    this.clearRecoveryRetry();
+    sessionStorage.removeItem('twitch-loop-recovery-session');
+    if (sessionStorage.getItem('twitch-loop-session') === id) sessionStorage.removeItem('twitch-loop-session');
+    this.pollSubscription?.unsubscribe();
+    this.session = null;
+    this.chatEmbedUrl = null;
+    this.lastRevision = 0;
+    this.playerMounted = false;
+    this.playerPlaying = false;
+    this.playbackBlocked = false;
+    this.player.destroy();
+    void this.wakeLock.release();
+    this.start();
+  }
+
+  private clearRecoveryRetry(): void {
+    if (this.recoveryRetryTimer !== null) clearTimeout(this.recoveryRetryTimer);
+    this.recoveryRetryTimer = null;
   }
 
   private restartSession(id: string): void {

@@ -13,6 +13,7 @@ public sealed record TwitchStream(
     [property: JsonPropertyName("user_login")] string UserLogin,
     [property: JsonPropertyName("user_name")] string UserName,
     [property: JsonPropertyName("started_at")] DateTimeOffset StartedAt,
+    [property: JsonPropertyName("viewer_count")] int ViewerCount,
     [property: JsonPropertyName("language")] string Language,
     [property: JsonPropertyName("game_name")] string GameName);
 public sealed record TwitchFollow(

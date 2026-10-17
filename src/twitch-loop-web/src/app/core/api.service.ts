@@ -9,7 +9,8 @@ export interface ScheduleResponse { version: number; channels: string[]; }
 export interface FollowingChannel { id: string; login: string; name: string; }
 export interface FollowingResponse { data: FollowingChannel[]; complete: boolean; }
 export interface PriorityChannelStatus { login: string; isLive: boolean | null; }
-export interface PriorityStatus { channels: PriorityChannelStatus[]; checkedAt: string | null; timeZone: string; }
+export interface LiveStreamStatus { login: string; name: string; viewerCount: number; startedAt: string; }
+export interface PriorityStatus { channels: PriorityChannelStatus[]; liveStreams: LiveStreamStatus[]; checkedAt: string | null; timeZone: string; }
 export interface SiteEvent { id: number; occurredAt: string; type: string; summary: string; details: string | null; }
 export interface SessionState { sessionId: string; revision: number; state: string; automationMode: string; channel: string | null; selectionTier: string | null; reason: string; statusFreshness: string; pollAfterSeconds: number; settingsVersion: number; expiresAt: string; }
 
