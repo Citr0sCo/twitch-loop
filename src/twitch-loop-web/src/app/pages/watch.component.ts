@@ -314,7 +314,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private pollPriorityStatus(): void {
     this.statusSubscription?.unsubscribe();
-    this.statusSubscription = interval(15000).pipe(
+    this.statusSubscription = interval(60000).pipe(
       startWith(0),
       switchMap(() => this.api.priorityStatus().pipe(catchError(() => EMPTY)))
     ).subscribe(status => {

@@ -1,1 +1,21 @@
-{"name":"Twitch Loop","short_name":"Twitch Loop","description":"Live priorities. Automatic fallbacks. Keep watching.","start_url":"/watch","display":"standalone","background_color":"#0E0E10","theme_color":"#9146FF","icons":[]}
+{
+  "name": "Twitch Loop",
+  "short_name": "Twitch Loop",
+  "description": "Live priorities. Automatic fallbacks. Keep watching.",
+  "start_url": "/watch",
+  "display": "standalone",
+  "background_color": "#0E0E10",
+  "theme_color": "#9146FF",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

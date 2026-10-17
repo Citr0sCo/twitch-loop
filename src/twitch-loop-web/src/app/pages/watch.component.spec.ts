@@ -109,11 +109,9 @@ describe('WatchComponent', () => {
       expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Reconnecting in 30 seconds.');
 
       jasmine.clock().tick(15000);
-      flushPriorityStatus(http);
       jasmine.clock().tick(14999);
       expect(http.match('/api/sessions').length).toBe(0);
       jasmine.clock().tick(1);
-      flushPriorityStatus(http);
 
       const waiting = {
         sessionId: 'retried-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
@@ -271,7 +269,6 @@ describe('WatchComponent', () => {
     http.expectOne('/api/logs/playback-started').flush(null);
 
       jasmine.clock().tick(15000);
-      flushPriorityStatus(http);
       http.expectOne('/api/sessions/same-channel-session/current-stream').flush({
         sessionId: 'same-channel-session', revision: 2, state: 'playing', automationMode: 'auto', channel: 'livechannel',
         selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
@@ -420,6 +417,49 @@ describe('WatchComponent', () => {
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
     sessionStorage.removeItem('twitch-loop-theatre');
+  });
+
+  it('refreshes the live viewer count every minute', async () => {
+    jasmine.clock().install();
+    sessionStorage.setItem('twitch-loop-session', 'viewer-count-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    try {
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      const startedAt = new Date().toISOString();
+      flushPriorityStatus(http, [], [{ login: 'viewer_stream', name: 'Viewer Stream', viewerCount: 321, startedAt }]);
+      const session = {
+        sessionId: 'viewer-count-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'viewer_stream',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      };
+      http.expectOne('/api/sessions/viewer-count-session/current-stream').flush(session);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const viewerCount = () => (fixture.nativeElement.querySelector('.live-chat-heading .stream-viewers') as HTMLElement).textContent;
+      expect(viewerCount()).toContain('321 viewers');
+
+      for (let i = 0; i < 3; i++) {
+        jasmine.clock().tick(15000);
+        http.expectOne('/api/sessions/viewer-count-session/current-stream').flush(session);
+      }
+      expect(viewerCount()).toContain('321 viewers');
+
+      jasmine.clock().tick(15000);
+      http.expectOne('/api/channels/priority-status').flush({
+        channels: [],
+        liveStreams: [{ login: 'viewer_stream', name: 'Viewer Stream', viewerCount: 654, startedAt }],
+        checkedAt: '2026-10-06T05:01:00Z',
+        timeZone: 'Europe/London'
+      });
+      http.expectOne('/api/sessions/viewer-count-session/current-stream').flush(session);
+      fixture.detectChanges();
+      expect(viewerCount()).toContain('654 viewers');
+    } finally {
+      fixture.destroy();
+      sessionStorage.removeItem('twitch-loop-session');
+      jasmine.clock().uninstall();
+    }
   });
 
   it('fills the available theatre space and keeps a padded bottom exit bar', async () => {
