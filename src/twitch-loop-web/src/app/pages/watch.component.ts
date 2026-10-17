@@ -17,10 +17,12 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
   private pollSubscription: Subscription | null = null;
   private statusSubscription: Subscription | null = null;
+  private durationSubscription: Subscription | null = null;
   private startSubscription: Subscription | null = null;
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoverySubscription: Subscription | null = null;
+  private durationNow = Date.now();
   private lastRevision = 0;
   private playerMounted = false;
   private lastLoggedPlayingChannel: string | null = null;
@@ -49,7 +51,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   formatLiveDuration(): string | null {
     const startedAt = this.currentLiveStream?.startedAt;
     if (!startedAt) return null;
-    const elapsedSeconds = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+    const elapsedSeconds = Math.floor((this.durationNow - new Date(startedAt).getTime()) / 1000);
     if (!Number.isFinite(elapsedSeconds)) return null;
     const totalSeconds = Math.max(0, elapsedSeconds);
     const hours = Math.floor(totalSeconds / 3600);
@@ -93,6 +95,10 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.durationSubscription = interval(1000).subscribe(() => {
+      this.durationNow = Date.now();
+      this.changeDetector.markForCheck();
+    });
     this.player.setOnPlaying(() => this.refreshFromPlayer(() => this.onPlayerPlaying()));
     this.player.setOnPlaybackBlocked(() => this.refreshFromPlayer(() => this.playbackBlocked = true));
     this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
@@ -211,6 +217,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.startSubscription?.unsubscribe();
     this.pollSubscription?.unsubscribe();
     this.statusSubscription?.unsubscribe();
+    this.durationSubscription?.unsubscribe();
     this.player.setOnPlaying(null);
     this.player.setOnPlaybackBlocked(null);
     this.player.destroy();
