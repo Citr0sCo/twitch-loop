@@ -6,6 +6,9 @@ import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 
+const backendUpdateStorageKey = 'twitch-loop-last-backend-update';
+const backendUpdateTimeoutMs = 5 * 60 * 1000;
+
 @Component({ selector: 'tl-watch', standalone: true, imports: [CommonModule], templateUrl: './watch.component.html', styleUrl: './watch.component.scss' })
 export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('playerAnchor') private playerAnchor?: ElementRef<HTMLElement>;
@@ -21,6 +24,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private startSubscription: Subscription | null = null;
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private backendUpdateTimer: ReturnType<typeof setTimeout> | null = null;
   private recoverySubscription: Subscription | null = null;
   private durationNow = Date.now();
   private lastRevision = 0;
@@ -107,8 +111,10 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     const recovery = sessionStorage.getItem('twitch-loop-recovery-session');
     const existing = sessionStorage.getItem('twitch-loop-session');
     if (recovery) this.stopAndStartSession(recovery);
-    else if (existing) this.poll(existing);
-    else this.start();
+    else if (existing) {
+      this.scheduleBackendUpdateTimeout(existing);
+      this.poll(existing);
+    } else this.start();
   }
 
   start(): void {
@@ -164,11 +170,13 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   stop(): void {
     if (!this.session) return;
     const sessionId = this.session.sessionId;
+    this.clearBackendUpdateTimeout();
+    sessionStorage.removeItem(backendUpdateStorageKey);
     this.pollSubscription?.unsubscribe();
     sessionStorage.removeItem('twitch-loop-session');
     this.api.sessionAction(sessionId, 'stop').subscribe({
       next: state => { this.apply(state); this.player.destroy(); this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; void this.wakeLock.release(); this.changeDetector.markForCheck(); },
-      error: () => { sessionStorage.setItem('twitch-loop-session', sessionId); this.poll(sessionId); this.error = 'Could not stop playback. Please try again.'; this.changeDetector.markForCheck(); }
+      error: () => { sessionStorage.setItem('twitch-loop-session', sessionId); this.scheduleBackendUpdateTimeout(sessionId); this.poll(sessionId); this.error = 'Could not stop playback. Please try again.'; this.changeDetector.markForCheck(); }
     });
   }
 
@@ -178,7 +186,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  reset(): void { this.clearStartRetry(); this.clearRecoveryRetry(); this.recoverySubscription?.unsubscribe(); this.recoverySubscription = null; sessionStorage.removeItem('twitch-loop-recovery-session'); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.clearStartRetry(); this.clearRecoveryRetry(); this.clearBackendUpdateTimeout(); this.recoverySubscription?.unsubscribe(); this.recoverySubscription = null; sessionStorage.removeItem('twitch-loop-recovery-session'); sessionStorage.removeItem(backendUpdateStorageKey); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
@@ -212,6 +220,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.document.body.classList.remove('theatre-mode');
     this.clearStartRetry();
     this.clearRecoveryRetry();
+    this.clearBackendUpdateTimeout();
     this.recoverySubscription?.unsubscribe();
     this.recoverySubscription = null;
     this.startSubscription?.unsubscribe();
@@ -283,7 +292,9 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private finishSessionRecovery(id: string): void {
     if (sessionStorage.getItem('twitch-loop-recovery-session') !== id) return;
     this.clearRecoveryRetry();
+    this.clearBackendUpdateTimeout();
     sessionStorage.removeItem('twitch-loop-recovery-session');
+    sessionStorage.removeItem(backendUpdateStorageKey);
     if (sessionStorage.getItem('twitch-loop-session') === id) sessionStorage.removeItem('twitch-loop-session');
     this.pollSubscription?.unsubscribe();
     this.session = null;
@@ -302,8 +313,45 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.recoveryRetryTimer = null;
   }
 
+  private clearBackendUpdateTimeout(): void {
+    if (this.backendUpdateTimer !== null) clearTimeout(this.backendUpdateTimer);
+    this.backendUpdateTimer = null;
+  }
+
+  private markBackendUpdate(sessionId: string): void {
+    if (sessionStorage.getItem('twitch-loop-session') !== sessionId) {
+      this.clearBackendUpdateTimeout();
+      return;
+    }
+    sessionStorage.setItem(backendUpdateStorageKey, String(Date.now()));
+    this.scheduleBackendUpdateTimeout(sessionId);
+  }
+
+  private scheduleBackendUpdateTimeout(sessionId: string): void {
+    this.clearBackendUpdateTimeout();
+    if (sessionStorage.getItem('twitch-loop-session') !== sessionId) return;
+    let lastUpdateAt = Number(sessionStorage.getItem(backendUpdateStorageKey) ?? NaN);
+    if (!Number.isFinite(lastUpdateAt)) {
+      lastUpdateAt = Date.now();
+      sessionStorage.setItem(backendUpdateStorageKey, String(lastUpdateAt));
+    }
+    this.backendUpdateTimer = setTimeout(() => {
+      this.backendUpdateTimer = null;
+      if (sessionStorage.getItem('twitch-loop-session') !== sessionId) return;
+      const currentLastUpdateAt = Number(sessionStorage.getItem(backendUpdateStorageKey) ?? NaN);
+      if (Number.isFinite(currentLastUpdateAt) && Date.now() - currentLastUpdateAt < backendUpdateTimeoutMs) {
+        this.scheduleBackendUpdateTimeout(sessionId);
+        return;
+      }
+      sessionStorage.setItem('twitch-loop-recovery-session', sessionId);
+      this.refreshBrowser();
+    }, Math.max(0, lastUpdateAt + backendUpdateTimeoutMs - Date.now()));
+  }
+
   private restartSession(id: string): void {
     if (sessionStorage.getItem('twitch-loop-session') !== id) return;
+    this.clearBackendUpdateTimeout();
+    sessionStorage.removeItem(backendUpdateStorageKey);
     this.pollSubscription?.unsubscribe();
     sessionStorage.removeItem('twitch-loop-session');
     this.session = null;
@@ -342,6 +390,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private apply(state: SessionState): void {
+    this.markBackendUpdate(state.sessionId);
     if (state.revision < this.lastRevision) return;
     this.message = '';
     const changed = state.channel?.toLowerCase() !== this.session?.channel?.toLowerCase();

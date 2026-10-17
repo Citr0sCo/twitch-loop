@@ -208,6 +208,58 @@ describe('WatchComponent', () => {
     sessionStorage.removeItem('twitch-loop-theatre');
   });
 
+  it('reloads and marks the session for recovery after five minutes without a backend update', async () => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate();
+    sessionStorage.setItem('twitch-loop-session', 'stale-session');
+    const fixture = TestBed.createComponent(WatchComponent);
+    try {
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      flushPriorityStatus(http);
+      http.expectOne('/api/sessions/stale-session/current-stream').flush({
+        sessionId: 'stale-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'streamer',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      await fixture.whenStable();
+      const component = fixture.componentInstance as unknown as {
+        refreshBrowser: () => void;
+        pollSubscription: { unsubscribe(): void } | null;
+        statusSubscription: { unsubscribe(): void } | null;
+        backendUpdateTimer: ReturnType<typeof setTimeout> | null;
+      };
+      expect(component.backendUpdateTimer).not.toBeNull();
+      const reload = spyOn(component, 'refreshBrowser');
+      component.pollSubscription?.unsubscribe();
+      component.statusSubscription?.unsubscribe();
+
+      jasmine.clock().tick(5 * 60 * 1000 - 1);
+      expect(reload).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
+
+      (fixture.componentInstance as unknown as { poll(id: string): void }).poll('stale-session');
+      http.expectOne('/api/sessions/stale-session/current-stream').flush({
+        sessionId: 'stale-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'streamer',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      component.pollSubscription?.unsubscribe();
+      jasmine.clock().tick(5 * 60 * 1000 - 1);
+      expect(reload).not.toHaveBeenCalled();
+      jasmine.clock().tick(1);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('stale-session');
+      expect(sessionStorage.getItem('twitch-loop-session')).toBe('stale-session');
+    } finally {
+      fixture.destroy();
+      sessionStorage.removeItem('twitch-loop-session');
+      sessionStorage.removeItem('twitch-loop-recovery-session');
+      jasmine.clock().uninstall();
+    }
+  });
+
   it('retries stopping the recovered session until the backend returns', async () => {
     jasmine.clock().install();
     sessionStorage.setItem('twitch-loop-session', 'recovering-session');
