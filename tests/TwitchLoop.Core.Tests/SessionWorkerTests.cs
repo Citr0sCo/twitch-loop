@@ -38,7 +38,8 @@ public sealed class SessionWorkerTests
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
             var workerLogger = new CapturingLogger<SessionWorker>();
-            var worker = new SessionWorker(store, twitch, tokens, new PriorityStatusCache(), new SystemClock(), new SystemRandomSource(), workerLogger);
+            var priorityStatus = new PriorityStatusCache();
+            var worker = new SessionWorker(store, twitch, tokens, priorityStatus, new SystemClock(), new SystemRandomSource(), workerLogger);
 
             await worker.EvaluateImmediatelyAsync(CancellationToken.None);
             Assert.That(workerLogger.LastException, Is.Null);
@@ -48,6 +49,9 @@ public sealed class SessionWorkerTests
             Assert.That(updated?.State, Is.EqualTo("playing"));
             Assert.That(updated?.Channel, Is.EqualTo("followedlive"));
             Assert.That(updated?.SelectionTier, Is.EqualTo("any-following"));
+            Assert.That(priorityStatus.Snapshot.LiveStreams.Single().Name, Is.EqualTo("Followed Live"));
+            Assert.That(priorityStatus.Snapshot.LiveStreams.Single().ViewerCount, Is.EqualTo(42));
+            Assert.That(priorityStatus.Snapshot.LiveStreams.Single().StartedAt, Is.EqualTo(DateTimeOffset.Parse("2026-10-05T12:00:00Z")));
         }
         finally
         {
@@ -115,7 +119,7 @@ public sealed class SessionWorkerTests
             await store.SaveScheduleAsync(["first", "second"], 1, "test", CancellationToken.None);
             var session = await store.CreateSessionAsync(await store.GetSettingsAsync(CancellationToken.None), CancellationToken.None);
             await store.UpdateSessionAsync(session.Id, "autoSelect", "second", CancellationToken.None);
-            var handler = new TwitchResponseHandler("""[{"id":"1","user_id":"1","user_login":"first","user_name":"First","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"},{"id":"2","user_id":"2","user_login":"second","user_name":"Second","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
+            var handler = new TwitchResponseHandler("""[{"id":"1","user_id":"1","user_login":"first","user_name":"First","started_at":"2026-10-05T12:00:00Z","viewer_count":42,"language":"en","game_name":"Test"},{"id":"2","user_id":"2","user_login":"second","user_name":"Second","started_at":"2026-10-05T12:00:00Z","viewer_count":42,"language":"en","game_name":"Test"}]""");
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
             var priorityStatus = new PriorityStatusCache();
@@ -152,7 +156,7 @@ public sealed class SessionWorkerTests
             await store.InitializeAsync();
             await store.SaveConnectionAsync("user-id", tokens.Protect("access"), tokens.Protect("refresh"), "scopes", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
             var session = await store.CreateSessionAsync(await store.GetSettingsAsync(CancellationToken.None), CancellationToken.None);
-            var handler = new TwitchResponseHandler("""[{"id":"global","user_id":"2","user_login":"global_live","user_name":"Global Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""");
+            var handler = new TwitchResponseHandler("""[{"id":"global","user_id":"2","user_login":"global_live","user_name":"Global Live","started_at":"2026-10-05T12:00:00Z","viewer_count":42,"language":"en","game_name":"Test"}]""");
             using var httpClient = new HttpClient(handler);
             var twitch = new TwitchApiClient(httpClient, configuration, NullLogger<TwitchApiClient>.Instance);
             var worker = new SessionWorker(store, twitch, tokens, new PriorityStatusCache(), new SystemClock(), new SystemRandomSource(), NullLogger<SessionWorker>.Instance);
@@ -173,7 +177,7 @@ public sealed class SessionWorkerTests
 
     private sealed class TwitchResponseHandler(string? streamsJson = null) : HttpMessageHandler
     {
-        private readonly string streamPayload = streamsJson ?? """[{"id":"stream-1","user_id":"1","user_login":"followedlive","user_name":"Followed Live","started_at":"2026-10-05T12:00:00Z","language":"en","game_name":"Test"}]""";
+        private readonly string streamPayload = streamsJson ?? """[{"id":"stream-1","user_id":"1","user_login":"followedlive","user_name":"Followed Live","started_at":"2026-10-05T12:00:00Z","viewer_count":42,"language":"en","game_name":"Test"}]""";
         public List<string> Paths { get; } = [];
         public List<string?> AccessTokens { get; } = [];
 

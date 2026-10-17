@@ -27,8 +27,12 @@ describe('WatchComponent', () => {
     }).compileComponents();
   });
 
-  function flushPriorityStatus(http: HttpTestingController, channels: { login: string; isLive: boolean | null }[] = []): void {
-    http.expectOne('/api/channels/priority-status').flush({ channels, checkedAt: '2026-10-06T05:00:00Z', timeZone: 'Europe/London' });
+  function flushPriorityStatus(
+    http: HttpTestingController,
+    channels: { login: string; isLive: boolean | null }[] = [],
+    liveStreams: { login: string; name: string; viewerCount: number; startedAt: string }[] = []
+  ): void {
+    http.expectOne('/api/channels/priority-status').flush({ channels, liveStreams, checkedAt: '2026-10-06T05:00:00Z', timeZone: 'Europe/London' });
   }
 
 
@@ -150,60 +154,104 @@ describe('WatchComponent', () => {
     fixture.destroy();
   });
 
-  it('polls a saved session immediately when browser connectivity returns', async () => {
+  it('reloads after a transient session failure, then stops and starts a fresh session', async () => {
     sessionStorage.setItem('twitch-loop-session', 'online-session');
-    const fixture = TestBed.createComponent(WatchComponent);
-    fixture.detectChanges();
+    sessionStorage.setItem('twitch-loop-theatre', 'true');
+    const firstFixture = TestBed.createComponent(WatchComponent);
+    firstFixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     flushPriorityStatus(http);
+    const reload = spyOn(firstFixture.componentInstance as unknown as { refreshBrowser: () => void }, 'refreshBrowser');
     http.expectOne('/api/sessions/online-session/current-stream').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
-    await fixture.whenStable();
-
-    window.dispatchEvent(new Event('online'));
+    await firstFixture.whenStable();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('online-session');
+    (firstFixture.componentInstance as unknown as { poll(id: string): void }).poll('online-session');
     http.expectOne('/api/sessions/online-session/current-stream').flush({
       sessionId: 'online-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'online_stream',
       selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
       settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
+    await firstFixture.whenStable();
+    expect(reload).toHaveBeenCalled();
+    firstFixture.destroy();
+
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
     flushPriorityStatus(http);
+    const stop = http.expectOne('/api/sessions/online-session/actions');
+    expect(stop.request.method).toBe('POST');
+    expect(stop.request.body).toEqual({ name: 'stop', channel: undefined });
+    stop.flush({
+      sessionId: 'online-session', revision: 2, state: 'stopped', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'session_stopped', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    const start = http.expectOne('/api/sessions');
+    start.flush({
+      sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    http.expectOne('/api/sessions/fresh-session/current-stream').flush({
+      sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Connecting to online_stream…');
+
+    expect(sessionStorage.getItem('twitch-loop-session')).toBe('fresh-session');
+    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
+    expect(fixture.componentInstance.theatre).toBeTrue();
+    expect(document.body.classList.contains('theatre-mode')).toBeTrue();
     fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+    sessionStorage.removeItem('twitch-loop-theatre');
   });
 
-  it('continues polling a saved session until the backend recovers', async () => {
+  it('retries stopping the recovered session until the backend returns', async () => {
     jasmine.clock().install();
     sessionStorage.setItem('twitch-loop-session', 'recovering-session');
+    sessionStorage.setItem('twitch-loop-recovery-session', 'recovering-session');
     const fixture = TestBed.createComponent(WatchComponent);
     try {
       fixture.detectChanges();
       const http = TestBed.inject(HttpTestingController);
       flushPriorityStatus(http);
-      http.expectOne('/api/sessions/recovering-session/current-stream').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
+      http.expectOne('/api/sessions/recovering-session/actions').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
       await fixture.whenStable();
-      fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Waiting for the local API');
-      expect(sessionStorage.getItem('twitch-loop-session')).toBe('recovering-session');
+      expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Reconnecting in 30 seconds.');
 
-      jasmine.clock().tick(15000);
-      flushPriorityStatus(http);
-      http.expectOne('/api/sessions/recovering-session/current-stream').flush({
-        sessionId: 'recovering-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'recovered_stream',
-        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      jasmine.clock().tick(30000);
+      http.match('/api/channels/priority-status').filter(request => !request.cancelled).forEach(request => request.flush({ channels: [], liveStreams: [], checkedAt: '2026-10-06T05:00:00Z', timeZone: 'Europe/London' }));
+      const stop = http.expectOne('/api/sessions/recovering-session/actions');
+      expect(stop.request.body.name).toBe('stop');
+      stop.flush({
+        sessionId: 'recovering-session', revision: 2, state: 'stopped', automationMode: 'auto', channel: null,
+        selectionTier: null, reason: 'session_stopped', statusFreshness: 'unknown', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      http.expectOne('/api/sessions').flush({
+        sessionId: 'recovered-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+        selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      http.expectOne('/api/sessions/recovered-session/current-stream').flush({
+        sessionId: 'recovered-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+        selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
         settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
       });
       await fixture.whenStable();
-      fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
-      expect(fixture.nativeElement.textContent).toContain('Connecting to recovered_stream…');
+      expect(sessionStorage.getItem('twitch-loop-session')).toBe('recovered-session');
+      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
     } finally {
       fixture.destroy();
+      sessionStorage.removeItem('twitch-loop-session');
+      sessionStorage.removeItem('twitch-loop-recovery-session');
       jasmine.clock().uninstall();
     }
   });
-
 
   it('does not switch the player when refreshed channel casing changes only', async () => {
     jasmine.clock().install();
@@ -239,7 +287,7 @@ describe('WatchComponent', () => {
     }
   });
 
-  it('highlights local API waits in amber and clears the warning after recovery', async () => {
+  it('reloads on a transient session poll failure and records the session for restart', async () => {
     sessionStorage.setItem('twitch-loop-session', 'waiting-session');
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
@@ -255,19 +303,16 @@ describe('WatchComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.playback-status').classList.contains('info')).toBeTrue();
 
+    const reload = spyOn(fixture.componentInstance as unknown as { refreshBrowser: () => void }, 'refreshBrowser');
     (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
     http.expectOne('/api/sessions/waiting-session/current-stream').flush('Unavailable', { status: 502, statusText: 'Bad Gateway' });
     await fixture.whenStable();
-    fixture.detectChanges();
-    const warning = fixture.nativeElement.querySelector('.notice.warning') as HTMLElement;
-    expect(warning.textContent).toContain('Waiting for the local API…');
-    expect(warning.getAttribute('role')).toBe('status');
-
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('waiting-session');
     (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
     http.expectOne('/api/sessions/waiting-session/current-stream').flush(waiting);
     await fixture.whenStable();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
+    expect(reload).toHaveBeenCalled();
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
   });
@@ -277,7 +322,7 @@ describe('WatchComponent', () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http, [{ login: 'priority', isLive: false }]);
+    flushPriorityStatus(http, [{ login: 'priority', isLive: false }], [{ login: 'followed_stream', name: 'Followed Stream', viewerCount: 1234, startedAt: new Date(Date.now() - 3 * 60 * 60_000 - 5 * 60_000).toISOString() }]);
     http.expectOne('/api/sessions/fallback-session/current-stream').flush({
       sessionId: 'fallback-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'followed_stream',
       selectionTier: 'any-following', reason: 'any_following_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
@@ -290,6 +335,11 @@ describe('WatchComponent', () => {
     expect(row.textContent).toContain('followed_stream');
     expect(row.textContent).toContain('Randomly chosen from your live followed channels');
     expect(row.querySelector('.channel-state.live')?.textContent).toContain('Live');
+    const streamSummary = fixture.nativeElement.querySelector('.stream-summary') as HTMLElement;
+    expect(streamSummary.textContent).toContain('Followed Stream');
+    expect(streamSummary.textContent).toContain('1,234 viewers');
+    expect(streamSummary.textContent).toContain('Live for 3h 5m');
+    expect(streamSummary.textContent).toContain('Last updated');
     const priorityHeading = fixture.nativeElement.querySelector('.channel-priorities .section-heading') as HTMLElement;
     expect(priorityHeading.querySelector('.last-refreshed')?.textContent).toContain('Last refreshed 06:00');
     expect(priorityHeading.lastElementChild?.classList.contains('last-refreshed')).toBeTrue();
@@ -334,10 +384,10 @@ describe('WatchComponent', () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http);
+    flushPriorityStatus(http, [], [{ login: 'theatre_stream', name: 'Theatre Streamer', viewerCount: 789, startedAt: new Date(Date.now() - 65 * 60_000).toISOString() }]);
     http.expectOne('/api/sessions/theatre-session/current-stream').flush({
-      sessionId: 'theatre-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      sessionId: 'theatre-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'theatre_stream',
+      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
       settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
     });
     await fixture.whenStable();
@@ -355,11 +405,17 @@ describe('WatchComponent', () => {
     expect(document.body.classList.contains('theatre-mode')).toBeTrue();
     const exitBar = fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement;
     expect(exitBar.textContent).toContain('Exit theatre mode');
+    expect(exitBar.textContent).toContain('Theatre Streamer');
+    expect(exitBar.textContent).toContain('789 viewers');
+    expect(exitBar.textContent).toContain('Live for 1h 5m');
+    expect(exitBar.textContent).toContain('Last updated');
     expect(parseFloat(getComputedStyle(exitBar).height)).toBeCloseTo(window.innerHeight * 0.1, 0);
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
     expect(exitButton.querySelector('svg')).not.toBeNull();
     const exitButtonBounds = exitButton.getBoundingClientRect();
     expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0);
+    expect(exitBar.querySelector('.theatre-stream-meta')?.getBoundingClientRect().right).toBeLessThan(exitButtonBounds.left);
+    expect(exitBar.querySelector('.theatre-updated')?.getBoundingClientRect().left).toBeGreaterThan(exitButtonBounds.right);
     exitButton.click();
     fixture.detectChanges();
     expect(document.body.classList.contains('theatre-mode')).toBeFalse();

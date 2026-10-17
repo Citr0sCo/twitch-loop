@@ -65,7 +65,8 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
             logger.LogWarning("Followed-channel status is incomplete during session evaluation: {Error}", followed.Error);
         var priorityLogins = priorityChannels.Where(channel => !ScheduleChannels.IsAutomaticFallback(channel)).ToArray();
         var followedLogins = followed.Data.Select(channel => channel.BroadcasterLogin).ToArray();
-        var activeLogins = sessions.Select(session => session.Channel).OfType<string>();
+        var activeLogins = sessions.Select(session => session.Channel).OfType<string>().ToArray();
+        var displayedLogins = priorityLogins.Concat(followedLogins).Concat(activeLogins).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var trackedLogins = priorityLogins.Concat(followedLogins).Concat(activeLogins).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var status = await twitch.GetStreamsAsync(trackedLogins, accessToken, cancellationToken);
         if (!status.Complete)
@@ -76,9 +77,9 @@ public sealed class SessionWorker(SqliteStore store, TwitchApiClient twitch, Tok
 
         var live = status.Data.Select(stream => stream.UserLogin).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var priorityCandidates = priorityLogins.Select(login => new Candidate(login, login, live.Contains(login) ? LiveStatus.Live : LiveStatus.Offline)).ToArray();
-        priorityStatus.Update(priorityCandidates, clock.UtcNow);
         var followingCandidates = followedLogins.Select(login => new Candidate(login, login, live.Contains(login) ? LiveStatus.Live : LiveStatus.Offline)).ToArray();
         var twitchWide = await twitch.GetStreamsAsync([], accessToken, cancellationToken);
+        priorityStatus.Update(priorityCandidates, status.Data.Concat(twitchWide.Data).Where(stream => displayedLogins.Contains(stream.UserLogin)), clock.UtcNow);
         var twitchWideCandidates = twitchWide.Data.Select(stream => new Candidate(stream.UserId, stream.UserLogin, LiveStatus.Live)).ToArray();
         var engine = new SelectionEngine(random);
         foreach (var session in sessions)

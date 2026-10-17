@@ -94,7 +94,7 @@ public sealed class ChannelsController(TwitchApiClient twitch, SqliteStore store
         var channels = await store.GetScheduleAsync(cancellationToken);
         var configured = channels.Where(channel => !TwitchLoop.Core.ScheduleChannels.IsAutomaticFallback(channel))
             .Select(login => new { login, isLive = liveByLogin.TryGetValue(login, out var isLive) ? (bool?)isLive : null });
-        return Ok(new { channels = configured, checkedAt = snapshot.CheckedAt, timeZone = timeZone.Id });
+        return Ok(new { channels = configured, liveStreams = snapshot.LiveStreams, checkedAt = snapshot.CheckedAt, timeZone = timeZone.Id });
     }
 
     [HttpPost("refresh")]

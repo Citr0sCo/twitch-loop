@@ -11,8 +11,13 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .player { height: 100%; width: 100%; }
 .control-buttons button { align-items: center; display: inline-flex; gap: .5rem; }
 .control-buttons svg, .theatre-exit-bar svg { fill: none; flex: none; height: 1.1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 1.1rem; }
-.theatre-exit-bar { align-items: center; background: #0e0e10; border-top: 1px solid #333; bottom: 0; display: flex; height: 10vh; height: 10dvh; justify-content: center; left: 0; position: fixed; right: 0; width: auto; z-index: 1001; }
-.theatre-exit-bar button { align-items: center; display: inline-flex; font-size: clamp(.75rem, 2vh, 1rem); gap: .5rem; justify-content: center; padding: clamp(.2rem, .8vh, .6rem) clamp(.5rem, 2vw, 1rem); }
+.theatre-exit-bar { align-items: center; background: #0e0e10; border-top: 1px solid #333; bottom: 0; display: flex; height: 10vh; height: 10dvh; justify-content: space-between; left: 0; padding: 0 clamp(.5rem, 2vw, 1.5rem); position: fixed; right: 0; width: auto; z-index: 1001; }
+.theatre-exit-bar button { align-items: center; display: inline-flex; font-size: clamp(.75rem, 2vh, 1rem); gap: .5rem; justify-content: center; left: 50%; padding: clamp(.2rem, .8vh, .6rem) clamp(.5rem, 2vw, 1rem); position: absolute; transform: translateX(-50%); }
+.stream-summary, .theatre-stream-meta { align-items: center; color: #d7d7dc; display: flex; flex-wrap: wrap; gap: .35rem 1rem; }
+.stream-summary { background: #18181b; border: 1px solid #2a2a2e; border-radius: .5rem; margin: 1rem 0; padding: .75rem 1rem; }
+.stream-summary strong, .theatre-stream-meta strong { color: #fff; }
+.theatre-stream-meta { flex-direction: column; align-items: flex-start; font-size: clamp(.65rem, 1.7vh, .9rem); gap: .1rem .5rem; max-width: 40%; }
+.theatre-updated { color: #aaaab0; font-size: clamp(.6rem, 1.6vh, .85rem); max-width: 32%; text-align: right; }
 .playback-status { align-items: flex-start; display: flex; flex-direction: column; gap: .4rem; }
 .playback-status span { color: #aaaab0; }
 .playback-status button { pointer-events: auto; }
@@ -42,6 +47,10 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .notice.info { background: #192c41; border: 1px solid #4f8fc9; color: #c6e2ff; }
 @media (max-width: 600px) {
   .page-heading { align-items: start; flex-direction: column; }
+  .stream-summary { align-items: flex-start; flex-direction: column; gap: .3rem; }
+  .theatre-exit-bar { padding: 0 .5rem; }
+  .theatre-stream-meta, .theatre-updated { font-size: .65rem; max-width: 32%; }
+  .theatre-exit-bar button { font-size: .65rem; gap: .25rem; padding: .35rem; }
   .section-heading { align-items: start; flex-direction: column; }
   .channel-priorities li { gap: .5rem; grid-template-columns: minmax(0, 1fr) auto; }
   .playing-indicator { grid-column: 1 / -1; }
