@@ -49,23 +49,13 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   formatLiveDuration(): string | null {
     const startedAt = this.currentLiveStream?.startedAt;
     if (!startedAt) return null;
-    const minutes = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000));
-    const days = Math.floor(minutes / 1440);
-    const hours = Math.floor((minutes % 1440) / 60);
-    const remainingMinutes = minutes % 60;
-    if (days) return `${days}d ${hours}h`;
-    if (hours) return `${hours}h ${remainingMinutes}m`;
-    return `${remainingMinutes}m`;
-  }
-
-  formatLastUpdated(): string | null {
-    if (!this.priorityStatus.checkedAt) return null;
-    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: this.priorityStatus.timeZone };
-    try {
-      return new Intl.DateTimeFormat(undefined, options).format(new Date(this.priorityStatus.checkedAt));
-    } catch {
-      return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(new Date(this.priorityStatus.checkedAt));
-    }
+    const elapsedSeconds = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+    if (!Number.isFinite(elapsedSeconds)) return null;
+    const totalSeconds = Math.max(0, elapsedSeconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
   }
 
   get isFallbackStream(): boolean {

@@ -335,11 +335,13 @@ describe('WatchComponent', () => {
     expect(row.textContent).toContain('followed_stream');
     expect(row.textContent).toContain('Randomly chosen from your live followed channels');
     expect(row.querySelector('.channel-state.live')?.textContent).toContain('Live');
-    const streamSummary = fixture.nativeElement.querySelector('.stream-summary') as HTMLElement;
-    expect(streamSummary.textContent).toContain('Followed Stream');
-    expect(streamSummary.textContent).toContain('1,234 viewers');
-    expect(streamSummary.textContent).toContain('Live for 3h 5m');
-    expect(streamSummary.textContent).toContain('Last updated');
+    const chatHeading = fixture.nativeElement.querySelector('.live-chat-heading') as HTMLElement;
+    expect(chatHeading.querySelector('h2')?.textContent).toContain('Live chat — Followed Stream');
+    expect(chatHeading.querySelector('.stream-viewers')?.textContent).toContain('1,234 viewers');
+    expect(getComputedStyle(chatHeading.querySelector('.stream-viewers') as HTMLElement).color).toBe('rgb(233, 25, 22)');
+    expect(chatHeading.querySelector('.stream-duration')?.textContent).toMatch(/^03:05:\d{2}$/);
+    expect(fixture.nativeElement.querySelector('.stream-summary')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Last updated');
     const priorityHeading = fixture.nativeElement.querySelector('.channel-priorities .section-heading') as HTMLElement;
     expect(priorityHeading.querySelector('.last-refreshed')?.textContent).toContain('Last refreshed 06:00');
     expect(priorityHeading.lastElementChild?.classList.contains('last-refreshed')).toBeTrue();
@@ -379,7 +381,7 @@ describe('WatchComponent', () => {
   });
 
 
-  it('uses a full-width 90-percent theatre player and reserves the bottom for exit controls', async () => {
+  it('fills the available theatre space and keeps a compact bottom exit bar', async () => {
     sessionStorage.setItem('twitch-loop-session', 'theatre-session');
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
@@ -399,23 +401,23 @@ describe('WatchComponent', () => {
     fixture.detectChanges();
     const playerShell = fixture.nativeElement.querySelector('.player-shell') as HTMLElement;
     expect(playerShell.classList.contains('theatre')).toBeTrue();
-    expect(getComputedStyle(playerShell).position).toBe('fixed');
-    expect(parseFloat(getComputedStyle(playerShell).height)).toBeCloseTo(window.innerHeight * 0.9, 0);
-    expect(parseFloat(getComputedStyle(playerShell).width)).toBeCloseTo(window.innerWidth, 0);
+    expect(getComputedStyle(playerShell).position).toBe('relative');
+    expect(parseFloat(getComputedStyle(playerShell).height)).toBeCloseTo(window.innerHeight - (fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement).getBoundingClientRect().height, 0);
+    expect(parseFloat(getComputedStyle(playerShell).width)).toBeCloseTo(document.documentElement.clientWidth, 0);
     expect(document.body.classList.contains('theatre-mode')).toBeTrue();
     const exitBar = fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement;
     expect(exitBar.textContent).toContain('Exit theatre mode');
     expect(exitBar.textContent).toContain('Theatre Streamer');
-    expect(exitBar.textContent).toContain('789 viewers');
-    expect(exitBar.textContent).toContain('Live for 1h 5m');
-    expect(exitBar.textContent).toContain('Last updated');
-    expect(parseFloat(getComputedStyle(exitBar).height)).toBeCloseTo(window.innerHeight * 0.1, 0);
+    expect(exitBar.querySelector('.stream-viewers')?.textContent).toContain('789 viewers');
+    expect(exitBar.querySelector('.stream-duration')?.textContent).toMatch(/^01:05:\d{2}$/);
+    expect(exitBar.textContent).not.toContain('Last updated');
+    expect(exitBar.getBoundingClientRect().height).toBeLessThan(window.innerHeight * 0.1);
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
     expect(exitButton.querySelector('svg')).not.toBeNull();
     const exitButtonBounds = exitButton.getBoundingClientRect();
     expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0);
     expect(exitBar.querySelector('.theatre-stream-meta')?.getBoundingClientRect().right).toBeLessThan(exitButtonBounds.left);
-    expect(exitBar.querySelector('.theatre-updated')?.getBoundingClientRect().left).toBeGreaterThan(exitButtonBounds.right);
+    expect(exitBar.getBoundingClientRect().top + exitBar.getBoundingClientRect().height).toBeCloseTo(window.innerHeight, 0);
     exitButton.click();
     fixture.detectChanges();
     expect(document.body.classList.contains('theatre-mode')).toBeFalse();
