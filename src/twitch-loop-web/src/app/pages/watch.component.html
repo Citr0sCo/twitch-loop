@@ -89,5 +89,6 @@
     <button type="button" class="secondary" (click)="toggleTheatre()">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M14 10 20 4m-6 0h6v6M10 14l-6 6" /></svg>Exit theatre mode
     </button>
+    <span *ngIf="priorityStatus.checkedAt" class="theatre-last-updated" [attr.aria-label]="'Last updated ' + formatLastChecked()">Updated: {{ formatLastChecked() }}</span>
   </div>
 </div>

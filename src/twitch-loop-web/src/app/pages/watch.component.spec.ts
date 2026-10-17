@@ -322,7 +322,7 @@ describe('WatchComponent', () => {
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http, [{ login: 'priority', isLive: false }], [{ login: 'followed_stream', name: 'Followed Stream', viewerCount: 1234, startedAt: new Date(Date.now() - 3 * 60 * 60_000 - 5 * 60_000).toISOString() }]);
+    flushPriorityStatus(http, [{ login: 'priority', isLive: false }], [{ login: 'followed_stream', name: 'Followed Stream', viewerCount: 1234, startedAt: new Date(Date.now() - 3 * 60 * 60_000 - 5 * 60_000 - 5000).toISOString() }]);
     http.expectOne('/api/sessions/fallback-session/current-stream').flush({
       sessionId: 'fallback-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'followed_stream',
       selectionTier: 'any-following', reason: 'any_following_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
@@ -338,7 +338,7 @@ describe('WatchComponent', () => {
     const chatHeading = fixture.nativeElement.querySelector('.live-chat-heading') as HTMLElement;
     expect(chatHeading.querySelector('h2')?.textContent).toContain('Live chat — Followed Stream');
     expect(chatHeading.querySelector('.stream-viewers')?.textContent).toContain('1,234 viewers');
-    expect(getComputedStyle(chatHeading.querySelector('.stream-viewers') as HTMLElement).color).toBe('rgb(233, 25, 22)');
+    expect(getComputedStyle(chatHeading.querySelector('.stream-viewers') as HTMLElement).color).toBe('rgb(255, 130, 128)');
     expect(chatHeading.querySelector('.stream-duration')?.textContent).toMatch(/^03:05:\d{2}$/);
     expect(fixture.nativeElement.querySelector('.stream-summary')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Last updated');
@@ -380,13 +380,54 @@ describe('WatchComponent', () => {
     sessionStorage.removeItem('twitch-loop-session');
   });
 
+  it('increments the live duration locally every second without extra API calls', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'duration-session');
+    sessionStorage.setItem('twitch-loop-theatre', 'true');
+    const startedAt = new Date(Date.now() - 65 * 60_000 - 5000).toISOString();
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http, [], [{
+      login: 'timer_stream', name: 'Timer Stream', viewerCount: 321,
+      startedAt
+    }]);
+    http.expectOne('/api/sessions/duration-session/current-stream').flush({
+      sessionId: 'duration-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'timer_stream',
+      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
 
-  it('fills the available theatre space and keeps a compact bottom exit bar', async () => {
+    const durationInSeconds = (value: string) => {
+      const [hours, minutes, seconds] = value.split(':').map(Number);
+      return hours * 3600 + minutes * 60 + seconds;
+    };
+    const readDuration = (selector: string) => (fixture.nativeElement.querySelector(selector) as HTMLElement).textContent!.trim();
+    const pageDuration = readDuration('.live-chat-heading .stream-duration');
+    const theatreDuration = readDuration('.theatre-exit-bar .stream-duration');
+    expect(theatreDuration).toBe(pageDuration);
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    fixture.detectChanges();
+    const pageDurationAfterTick = durationInSeconds(readDuration('.live-chat-heading .stream-duration'));
+    const theatreDurationAfterTick = durationInSeconds(readDuration('.theatre-exit-bar .stream-duration'));
+    expect(pageDurationAfterTick).toBeGreaterThan(durationInSeconds(pageDuration));
+    expect(pageDurationAfterTick).toBeLessThanOrEqual(durationInSeconds(pageDuration) + 2);
+    expect(theatreDurationAfterTick).toBe(pageDurationAfterTick);
+    http.expectNone('/api/channels/priority-status');
+    http.expectNone('/api/sessions/duration-session/current-stream');
+
+    fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+    sessionStorage.removeItem('twitch-loop-theatre');
+  });
+
+  it('fills the available theatre space and keeps a padded bottom exit bar', async () => {
     sessionStorage.setItem('twitch-loop-session', 'theatre-session');
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http, [], [{ login: 'theatre_stream', name: 'Theatre Streamer', viewerCount: 789, startedAt: new Date(Date.now() - 65 * 60_000).toISOString() }]);
+    flushPriorityStatus(http, [], [{ login: 'theatre_stream', name: 'Theatre Streamer', viewerCount: 789, startedAt: new Date(Date.now() - 65 * 60_000 - 5000).toISOString() }]);
     http.expectOne('/api/sessions/theatre-session/current-stream').flush({
       sessionId: 'theatre-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'theatre_stream',
       selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
@@ -409,9 +450,16 @@ describe('WatchComponent', () => {
     expect(exitBar.textContent).toContain('Exit theatre mode');
     expect(exitBar.textContent).toContain('Theatre Streamer');
     expect(exitBar.querySelector('.stream-viewers')?.textContent).toContain('789 viewers');
+    expect(getComputedStyle(exitBar.querySelector('.stream-viewers') as HTMLElement).color).toBe('rgb(255, 130, 128)');
     expect(exitBar.querySelector('.stream-duration')?.textContent).toMatch(/^01:05:\d{2}$/);
-    expect(exitBar.textContent).not.toContain('Last updated');
-    expect(exitBar.getBoundingClientRect().height).toBeLessThan(window.innerHeight * 0.1);
+    const lastUpdated = exitBar.querySelector('.theatre-last-updated') as HTMLElement;
+    expect(lastUpdated.textContent).toContain('Updated: 06:00');
+    expect(lastUpdated.getBoundingClientRect().left).toBeGreaterThan(exitBar.querySelector('button')!.getBoundingClientRect().right);
+    expect(parseFloat(getComputedStyle(exitBar).paddingTop)).toBeGreaterThanOrEqual(15);
+    expect(parseFloat(getComputedStyle(exitBar).paddingRight)).toBeGreaterThanOrEqual(15);
+    expect(parseFloat(getComputedStyle(exitBar).paddingBottom)).toBeGreaterThanOrEqual(15);
+    expect(parseFloat(getComputedStyle(exitBar).paddingLeft)).toBeGreaterThanOrEqual(15);
+    expect(exitBar.getBoundingClientRect().height).toBeLessThan(window.innerHeight * 0.2);
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
     expect(exitButton.querySelector('svg')).not.toBeNull();
     const exitButtonBounds = exitButton.getBoundingClientRect();
