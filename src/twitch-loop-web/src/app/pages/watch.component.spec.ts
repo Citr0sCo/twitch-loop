@@ -415,7 +415,7 @@ describe('WatchComponent', () => {
     const exitButton = exitBar.querySelector('button') as HTMLButtonElement;
     expect(exitButton.querySelector('svg')).not.toBeNull();
     const exitButtonBounds = exitButton.getBoundingClientRect();
-    expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(document.documentElement.clientWidth / 2, 0);
+    expect(exitButtonBounds.left + exitButtonBounds.width / 2).toBeCloseTo(window.innerWidth / 2, 0);
     expect(exitBar.querySelector('.theatre-stream-meta')?.getBoundingClientRect().right).toBeLessThan(exitButtonBounds.left);
     expect(exitBar.getBoundingClientRect().top + exitBar.getBoundingClientRect().height).toBeCloseTo(window.innerHeight, 0);
     exitButton.click();
