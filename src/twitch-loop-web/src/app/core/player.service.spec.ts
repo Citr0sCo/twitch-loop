@@ -18,6 +18,8 @@ describe('PlayerService', () => {
     const setVolume = jasmine.createSpy('setVolume');
     const setQuality = jasmine.createSpy('setQuality');
     let currentQuality = 'auto';
+    let paused = false;
+    let playbackStats = { fps: 60, playbackRate: 3200 };
     const twitchSetChannel = jasmine.createSpy('setChannel');
     class MockTwitchPlayer {
       static READY = 'ready';
@@ -29,6 +31,8 @@ describe('PlayerService', () => {
       setVolume(volume: number): void { setVolume(volume); }
       getQualities(): string[] { return ['720p60', 'chunked', '1080p60']; }
       getQuality(): string { return currentQuality; }
+      getPlaybackStats(): { fps: number; playbackRate: number } { return playbackStats; }
+      isPaused(): boolean { return paused; }
       setQuality(quality: string): void { currentQuality = quality; setQuality(quality); }
       play(): void {}
       destroy(): void {}
@@ -55,7 +59,12 @@ describe('PlayerService', () => {
     expect(setQuality).toHaveBeenCalledOnceWith('chunked');
     expect(playerOptions?.['autoplay']).toBeTrue();
     expect(playerOptions?.['muted']).toBeFalse();
+    expect(service.getHealth()).toEqual({ paused: false, hasPlaybackActivity: true });
+    paused = true;
+    playbackStats = { fps: 0, playbackRate: 0 };
+    expect(service.getHealth()).toEqual({ paused: true, hasPlaybackActivity: false });
     service.destroy();
+    expect(service.getHealth()).toBeNull();
   });
 
 });
