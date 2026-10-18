@@ -1,11 +1,23 @@
 import { Injectable } from '@angular/core';
 
+interface PlaybackStats {
+  fps?: number;
+  playbackRate?: number;
+}
+
+export interface PlayerHealth {
+  paused: boolean;
+  hasPlaybackActivity: boolean;
+}
+
 interface TwitchPlayerInstance {
   addEventListener(event: string, callback: () => void): void;
   setChannel(channel: string): void;
   setVolume(volume: number): void;
   getQualities(): string[];
   getQuality(): string;
+  getPlaybackStats(): PlaybackStats;
+  isPaused(): boolean;
   setQuality(quality: string): void;
   play(): void;
   destroy(): void;
@@ -49,13 +61,35 @@ export class PlayerService {
 
   setOnPlaying(callback: (() => void) | null): void { this.onPlaying = callback; }
   setOnPlaybackBlocked(callback: (() => void) | null): void { this.onPlaybackBlocked = callback; }
+  getHealth(): PlayerHealth | null {
+    if (!this.player) return null;
+    try {
+      const stats = this.player.getPlaybackStats();
+      const hasFps = Number.isFinite(stats.fps);
+      const hasPlaybackRate = Number.isFinite(stats.playbackRate);
+      if (!hasFps && !hasPlaybackRate) return null;
+      return {
+        paused: this.player.isPaused(),
+        hasPlaybackActivity: hasFps
+          ? (stats.fps ?? 0) > 0
+          : hasPlaybackRate && (stats.playbackRate ?? 0) > 0
+      };
+    } catch {
+      return null;
+    }
+  }
   setChannel(channel: string): void {
     if (!this.player || this.currentChannel?.toLowerCase() === channel.toLowerCase()) return;
     this.player.setChannel(channel);
     this.currentChannel = channel;
   }
   play(): void { this.player?.play(); }
-  destroy(): void { this.player?.destroy(); this.player = null; this.currentChannel = null; }
+  destroy(): void {
+    const player = this.player;
+    this.player = null;
+    this.currentChannel = null;
+    try { player?.destroy(); } catch {}
+  }
 
   private selectHighestQuality(): void {
     if (!this.player) return;

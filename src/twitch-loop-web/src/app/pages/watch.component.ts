@@ -6,6 +6,10 @@ import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 
+const playerHealthIntervalMs = 15000;
+const playerStartTimeoutMs = 90000;
+const unhealthySamplesBeforeRecovery = 3;
+const maxPlayerRecoveryAttempts = 3;
 const backendUpdateStorageKey = 'twitch-loop-last-backend-update';
 const backendUpdateTimeoutMs = 5 * 60 * 1000;
 
@@ -25,7 +29,12 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private backendUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+  private playerHealthSubscription: Subscription | null = null;
   private recoverySubscription: Subscription | null = null;
+  private playerMountedAt = 0;
+  private unhealthyPlayerSamples = 0;
+  private playerRecoveryAttempts = 0;
+  private playerRecoveryExhausted = false;
   private durationNow = Date.now();
   private lastRevision = 0;
   private playerMounted = false;
@@ -103,6 +112,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
       this.durationNow = Date.now();
       this.changeDetector.markForCheck();
     });
+    this.playerHealthSubscription = interval(playerHealthIntervalMs).subscribe(() => this.checkPlayerHealth());
     this.player.setOnPlaying(() => this.refreshFromPlayer(() => this.onPlayerPlaying()));
     this.player.setOnPlaybackBlocked(() => this.refreshFromPlayer(() => this.playbackBlocked = true));
     this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
@@ -227,6 +237,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.pollSubscription?.unsubscribe();
     this.statusSubscription?.unsubscribe();
     this.durationSubscription?.unsubscribe();
+    this.playerHealthSubscription?.unsubscribe();
     this.player.setOnPlaying(null);
     this.player.setOnPlaybackBlocked(null);
     this.player.destroy();
@@ -360,6 +371,48 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
 
+  private checkPlayerHealth(): void {
+    if (!this.playerMounted || !this.session?.channel || this.playbackBlocked || this.playerRecoveryExhausted) return;
+    const health = this.player.getHealth();
+    if (health?.paused) {
+      this.unhealthyPlayerSamples = 0;
+      return;
+    }
+    if (!this.playerPlaying) {
+      if (this.playerMountedAt && Date.now() - this.playerMountedAt >= playerStartTimeoutMs) this.recoverPlayer();
+      return;
+    }
+    if (health?.hasPlaybackActivity) {
+      this.unhealthyPlayerSamples = 0;
+      this.playerRecoveryAttempts = 0;
+      this.playerRecoveryExhausted = false;
+      return;
+    }
+    this.unhealthyPlayerSamples++;
+    if (this.unhealthyPlayerSamples >= unhealthySamplesBeforeRecovery) this.recoverPlayer();
+  }
+
+  private recoverPlayer(): void {
+    if (this.playerRecoveryAttempts >= maxPlayerRecoveryAttempts) {
+      this.playerRecoveryExhausted = true;
+      this.error = 'The Twitch player is still not responding after several reconnect attempts. Try Reset Session.';
+      this.changeDetector.markForCheck();
+      return;
+    }
+    const channel = this.session?.channel;
+    if (!channel) return;
+    this.playerRecoveryAttempts++;
+    this.playerMounted = false;
+    this.playerMountedAt = 0;
+    this.unhealthyPlayerSamples = 0;
+    this.playerPlaying = false;
+    this.message = `The Twitch player stopped responding. Reconnecting to ${channel}…`;
+    this.player.destroy();
+    void this.wakeLock.release();
+    this.changeDetector.markForCheck();
+    void this.mountOrSwitch(channel);
+  }
+
   private pollPriorityStatus(): void {
     this.statusSubscription?.unsubscribe();
     this.statusSubscription = interval(60000).pipe(
@@ -380,6 +433,11 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.playerPlaying = true;
     this.playbackBlocked = false;
     this.starting = false;
+    this.error = '';
+    this.message = '';
+    this.unhealthyPlayerSamples = 0;
+    this.playerRecoveryAttempts = 0;
+    this.playerRecoveryExhausted = false;
     if (this.session) {
       this.session = { ...this.session, state: 'playing' };
       if (this.session.channel && this.lastLoggedPlayingChannel?.toLowerCase() !== this.session.channel.toLowerCase()) {
@@ -397,6 +455,10 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     if (changed) {
       this.playerPlaying = false;
       this.playbackBlocked = false;
+      this.playerMountedAt = 0;
+      this.unhealthyPlayerSamples = 0;
+      this.playerRecoveryAttempts = 0;
+      this.playerRecoveryExhausted = false;
       this.lastLoggedPlayingChannel = null;
     }
     this.lastRevision = state.revision; this.session = state;
@@ -430,6 +492,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
         await this.player.mount('twitch-player', channel);
         this.playerMounted = true;
       }
+      this.playerMountedAt = Date.now();
+      this.unhealthyPlayerSamples = 0;
       this.message = '';
       this.changeDetector.markForCheck();
     } catch {

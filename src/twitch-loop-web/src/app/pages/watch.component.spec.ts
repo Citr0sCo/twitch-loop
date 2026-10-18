@@ -6,12 +6,13 @@ import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'setChannel', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'getHealth', 'setChannel', 'play', 'destroy']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
     sessionStorage.clear();
     player.mount.and.returnValue(Promise.resolve());
+    player.getHealth.and.returnValue(null);
     wakeLock.supported.and.returnValue(true);
     wakeLock.active.and.returnValue(false);
     wakeLock.request.and.returnValue(Promise.resolve(true));
@@ -42,7 +43,9 @@ describe('WatchComponent', () => {
     player.setChannel.calls.reset();
     player.setOnPlaying.calls.reset();
     player.setOnPlaybackBlocked.calls.reset();
+    player.getHealth.calls.reset();
     player.play.calls.reset();
+    player.destroy.calls.reset();
   });
 
   it('starts playback automatically on a fresh Watch visit', async () => {
@@ -96,6 +99,52 @@ describe('WatchComponent', () => {
     fixture.destroy();
   });
 
+
+  it('recreates a stalled Twitch iframe after consecutive unhealthy playback checks', async () => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate();
+    sessionStorage.setItem('twitch-loop-session', 'health-session');
+    player.getHealth.and.returnValue({ paused: false, hasPlaybackActivity: true });
+    const fixture = TestBed.createComponent(WatchComponent);
+    try {
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      flushPriorityStatus(http);
+      const state = {
+        sessionId: 'health-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'streamer',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      };
+      http.expectOne('/api/sessions/health-session/current-stream').flush(state);
+      await fixture.whenStable();
+      http.expectNone('/api/sessions');
+      const component = fixture.componentInstance as unknown as {
+        pollSubscription: { unsubscribe(): void } | null;
+        statusSubscription: { unsubscribe(): void } | null;
+      };
+      component.pollSubscription?.unsubscribe();
+      component.statusSubscription?.unsubscribe();
+      player.setOnPlaying.calls.mostRecent().args[0]?.();
+      http.expectOne('/api/logs/playback-started').flush(null);
+      await fixture.whenStable();
+
+      player.getHealth.and.returnValue({ paused: true, hasPlaybackActivity: false });
+      jasmine.clock().tick(45_000);
+      expect(player.mount).toHaveBeenCalledTimes(1);
+      player.getHealth.and.returnValue({ paused: false, hasPlaybackActivity: false });
+      jasmine.clock().tick(30_000);
+      expect(player.mount).toHaveBeenCalledTimes(1);
+      jasmine.clock().tick(15_000);
+      await fixture.whenStable();
+
+      expect(player.destroy).toHaveBeenCalled();
+      expect(player.mount).toHaveBeenCalledTimes(2);
+    } finally {
+      fixture.destroy();
+      sessionStorage.removeItem('twitch-loop-session');
+      jasmine.clock().uninstall();
+    }
+  });
 
   it('retries starting playback after a transient backend failure', async () => {
     jasmine.clock().install();
