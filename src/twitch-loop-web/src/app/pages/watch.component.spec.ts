@@ -201,63 +201,38 @@ describe('WatchComponent', () => {
     fixture.destroy();
   });
 
-  it('reloads after a transient session failure, then stops and starts a fresh session', async () => {
+  it('shows a reconnecting message on transient session failures and applies state once the backend returns', async () => {
+    jasmine.clock().install();
     sessionStorage.setItem('twitch-loop-session', 'online-session');
-    sessionStorage.setItem('twitch-loop-theatre', 'true');
-    const firstFixture = TestBed.createComponent(WatchComponent);
-    firstFixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    flushPriorityStatus(http);
-    const reload = spyOn(firstFixture.componentInstance as unknown as { refreshBrowser: () => void }, 'refreshBrowser');
-    http.expectOne('/api/sessions/online-session/current-stream').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
-    await firstFixture.whenStable();
-    expect(reload).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('online-session');
-    (firstFixture.componentInstance as unknown as { poll(id: string): void }).poll('online-session');
-    http.expectOne('/api/sessions/online-session/current-stream').flush({
-      sessionId: 'online-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'online_stream',
-      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
-      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    await firstFixture.whenStable();
-    expect(reload).toHaveBeenCalled();
-    firstFixture.destroy();
-
     const fixture = TestBed.createComponent(WatchComponent);
-    fixture.detectChanges();
-    flushPriorityStatus(http);
-    const stop = http.expectOne('/api/sessions/online-session/actions');
-    expect(stop.request.method).toBe('POST');
-    expect(stop.request.body).toEqual({ name: 'stop', channel: undefined });
-    stop.flush({
-      sessionId: 'online-session', revision: 2, state: 'stopped', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'session_stopped', statusFreshness: 'unknown', pollAfterSeconds: 15,
-      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    const start = http.expectOne('/api/sessions');
-    start.flush({
-      sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
-      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    http.expectOne('/api/sessions/fresh-session/current-stream').flush({
-      sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
-      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
-      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    try {
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      flushPriorityStatus(http);
+      http.expectOne('/api/sessions/online-session/current-stream').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Reconnecting to the server…');
 
-    expect(sessionStorage.getItem('twitch-loop-session')).toBe('fresh-session');
-    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
-    expect(fixture.componentInstance.theatre).toBeTrue();
-    expect(document.body.classList.contains('theatre-mode')).toBeTrue();
-    fixture.destroy();
-    sessionStorage.removeItem('twitch-loop-session');
-    sessionStorage.removeItem('twitch-loop-theatre');
+      jasmine.clock().tick(15000);
+      http.expectOne('/api/sessions/online-session/current-stream').flush({
+        sessionId: 'online-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'online_stream',
+        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
+      expect(fixture.componentInstance.playerPlaying).toBeFalse();
+      player.setOnPlaying.calls.mostRecent().args[0]?.();
+      http.expectOne('/api/logs/playback-started').flush(null);
+      expect(fixture.componentInstance.playbackState).toBe('playing');
+    } finally {
+      fixture.destroy();
+      sessionStorage.removeItem('twitch-loop-session');
+      jasmine.clock().uninstall();
+    }
   });
 
-  it('reloads and marks the session for recovery after five minutes without a backend update', async () => {
+  it('starts a fresh session after five minutes without a backend update', async () => {
     jasmine.clock().install();
     jasmine.clock().mockDate();
     sessionStorage.setItem('twitch-loop-session', 'stale-session');
@@ -273,81 +248,63 @@ describe('WatchComponent', () => {
       });
       await fixture.whenStable();
       const component = fixture.componentInstance as unknown as {
-        refreshBrowser: () => void;
         pollSubscription: { unsubscribe(): void } | null;
         statusSubscription: { unsubscribe(): void } | null;
         backendUpdateTimer: ReturnType<typeof setTimeout> | null;
       };
       expect(component.backendUpdateTimer).not.toBeNull();
-      const reload = spyOn(component, 'refreshBrowser');
       component.pollSubscription?.unsubscribe();
       component.statusSubscription?.unsubscribe();
 
       jasmine.clock().tick(5 * 60 * 1000 - 1);
-      expect(reload).not.toHaveBeenCalled();
-      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
+      expect(sessionStorage.getItem('twitch-loop-session')).toBe('stale-session');
 
-      (fixture.componentInstance as unknown as { poll(id: string): void }).poll('stale-session');
-      http.expectOne('/api/sessions/stale-session/current-stream').flush({
-        sessionId: 'stale-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'streamer',
-        selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      jasmine.clock().tick(1);
+      http.expectOne('/api/sessions').flush({
+        sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+        selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
         settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
       });
-      component.pollSubscription?.unsubscribe();
-      jasmine.clock().tick(5 * 60 * 1000 - 1);
-      expect(reload).not.toHaveBeenCalled();
-      jasmine.clock().tick(1);
-
-      expect(reload).toHaveBeenCalledTimes(1);
-      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('stale-session');
-      expect(sessionStorage.getItem('twitch-loop-session')).toBe('stale-session');
+      http.expectOne('/api/sessions/fresh-session/current-stream').flush({
+        sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+        selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+      });
+      await fixture.whenStable();
+      expect(sessionStorage.getItem('twitch-loop-session')).toBe('fresh-session');
     } finally {
       fixture.destroy();
       sessionStorage.removeItem('twitch-loop-session');
-      sessionStorage.removeItem('twitch-loop-recovery-session');
       jasmine.clock().uninstall();
     }
   });
 
-  it('retries stopping the recovered session until the backend returns', async () => {
+  it('starts a fresh session when the saved session is lost (404) during poll', async () => {
     jasmine.clock().install();
-    sessionStorage.setItem('twitch-loop-session', 'recovering-session');
-    sessionStorage.setItem('twitch-loop-recovery-session', 'recovering-session');
+    sessionStorage.setItem('twitch-loop-session', 'lost-session');
     const fixture = TestBed.createComponent(WatchComponent);
     try {
       fixture.detectChanges();
       const http = TestBed.inject(HttpTestingController);
       flushPriorityStatus(http);
-      http.expectOne('/api/sessions/recovering-session/actions').flush('Unavailable', { status: 503, statusText: 'Service Unavailable' });
+      http.expectOne('/api/sessions/lost-session/current-stream').flush(null, { status: 404, statusText: 'Not Found' });
       await fixture.whenStable();
-      expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Reconnecting in 30 seconds.');
 
-      jasmine.clock().tick(30000);
-      http.match('/api/channels/priority-status').filter(request => !request.cancelled).forEach(request => request.flush({ channels: [], liveStreams: [], checkedAt: '2026-10-06T05:00:00Z', timeZone: 'Europe/London' }));
-      const stop = http.expectOne('/api/sessions/recovering-session/actions');
-      expect(stop.request.body.name).toBe('stop');
-      stop.flush({
-        sessionId: 'recovering-session', revision: 2, state: 'stopped', automationMode: 'auto', channel: null,
-        selectionTier: null, reason: 'session_stopped', statusFreshness: 'unknown', pollAfterSeconds: 15,
-        settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
-      });
       http.expectOne('/api/sessions').flush({
-        sessionId: 'recovered-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+        sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
         selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
         settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
       });
-      http.expectOne('/api/sessions/recovered-session/current-stream').flush({
-        sessionId: 'recovered-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      http.expectOne('/api/sessions/fresh-session/current-stream').flush({
+        sessionId: 'fresh-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
         selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
         settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
       });
       await fixture.whenStable();
-      expect(sessionStorage.getItem('twitch-loop-session')).toBe('recovered-session');
-      expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBeNull();
+      expect(sessionStorage.getItem('twitch-loop-session')).toBe('fresh-session');
     } finally {
       fixture.destroy();
       sessionStorage.removeItem('twitch-loop-session');
-      sessionStorage.removeItem('twitch-loop-recovery-session');
       jasmine.clock().uninstall();
     }
   });
@@ -385,7 +342,7 @@ describe('WatchComponent', () => {
     }
   });
 
-  it('reloads on a transient session poll failure and records the session for restart', async () => {
+  it('recovers silently from transient poll failures without page refresh', async () => {
     sessionStorage.setItem('twitch-loop-session', 'waiting-session');
     const fixture = TestBed.createComponent(WatchComponent);
     fixture.detectChanges();
@@ -401,16 +358,16 @@ describe('WatchComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.playback-status').classList.contains('info')).toBeTrue();
 
-    const reload = spyOn(fixture.componentInstance as unknown as { refreshBrowser: () => void }, 'refreshBrowser');
     (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
     http.expectOne('/api/sessions/waiting-session/current-stream').flush('Unavailable', { status: 502, statusText: 'Bad Gateway' });
     await fixture.whenStable();
-    expect(reload).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem('twitch-loop-recovery-session')).toBe('waiting-session');
+    expect(fixture.nativeElement.querySelector('.notice.warning')?.textContent).toContain('Reconnecting to the server…');
+
     (fixture.componentInstance as unknown as { poll(id: string): void }).poll('waiting-session');
     http.expectOne('/api/sessions/waiting-session/current-stream').flush(waiting);
     await fixture.whenStable();
-    expect(reload).toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('.notice.warning')).toBeNull();
+    expect(fixture.componentInstance.session).not.toBeNull();
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
   });

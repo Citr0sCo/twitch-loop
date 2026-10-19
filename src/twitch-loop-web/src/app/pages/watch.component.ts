@@ -27,10 +27,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private durationSubscription: Subscription | null = null;
   private startSubscription: Subscription | null = null;
   private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  private recoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private backendUpdateTimer: ReturnType<typeof setTimeout> | null = null;
   private playerHealthSubscription: Subscription | null = null;
-  private recoverySubscription: Subscription | null = null;
   private playerMountedAt = 0;
   private unhealthyPlayerSamples = 0;
   private playerRecoveryAttempts = 0;
@@ -118,10 +116,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
     this.document.body.classList.toggle('theatre-mode', this.theatre);
     this.pollPriorityStatus();
-    const recovery = sessionStorage.getItem('twitch-loop-recovery-session');
     const existing = sessionStorage.getItem('twitch-loop-session');
-    if (recovery) this.stopAndStartSession(recovery);
-    else if (existing) {
+    if (existing) {
       this.scheduleBackendUpdateTimeout(existing);
       this.poll(existing);
     } else this.start();
@@ -196,7 +192,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  reset(): void { this.clearStartRetry(); this.clearRecoveryRetry(); this.clearBackendUpdateTimeout(); this.recoverySubscription?.unsubscribe(); this.recoverySubscription = null; sessionStorage.removeItem('twitch-loop-recovery-session'); sessionStorage.removeItem(backendUpdateStorageKey); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.clearStartRetry(); this.clearBackendUpdateTimeout(); sessionStorage.removeItem(backendUpdateStorageKey); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
@@ -224,15 +220,14 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     const sessionId = sessionStorage.getItem('twitch-loop-session');
     if (sessionId) this.poll(sessionId);
     this.pollPriorityStatus();
+    this.player.play();
+    this.changeDetector.markForCheck();
   }
 
   ngOnDestroy(): void {
     this.document.body.classList.remove('theatre-mode');
     this.clearStartRetry();
-    this.clearRecoveryRetry();
     this.clearBackendUpdateTimeout();
-    this.recoverySubscription?.unsubscribe();
-    this.recoverySubscription = null;
     this.startSubscription?.unsubscribe();
     this.pollSubscription?.unsubscribe();
     this.statusSubscription?.unsubscribe();
@@ -250,78 +245,29 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
       startWith(0),
       switchMap(() => this.api.currentSession(id).pipe(catchError(error => {
         if (error.status === 404) {
-          sessionStorage.setItem('twitch-loop-recovery-session', id);
-          this.refreshBrowser();
-        } else if (this.isTransientApiFailure(error.status)) this.reloadForRecovery(id);
-        else {
+          this.clearBackendUpdateTimeout();
+          sessionStorage.removeItem('twitch-loop-session');
+          sessionStorage.removeItem(backendUpdateStorageKey);
+          this.session = null;
+          this.lastRevision = 0;
+          this.playerMounted = false;
+          this.playerPlaying = false;
+          this.player.destroy();
+          void this.wakeLock.release();
+          this.start();
+        } else if (this.isTransientApiFailure(error.status)) {
+          this.message = 'Reconnecting to the server…';
+          this.changeDetector.markForCheck();
+        } else {
           this.message = 'Could not refresh the playback session.';
           this.changeDetector.markForCheck();
         }
         return EMPTY;
       })))
     ).subscribe(state => {
-      if (sessionStorage.getItem('twitch-loop-recovery-session') === id) { this.refreshBrowser(); return; }
       if (state.state === 'stopped') this.restartSession(id);
       else this.apply(state);
     });
-  }
-
-  private reloadForRecovery(id: string): void {
-    if (sessionStorage.getItem('twitch-loop-recovery-session') === id) return;
-    sessionStorage.setItem('twitch-loop-recovery-session', id);
-    this.message = 'Waiting for the local API… The page will refresh when it reconnects.';
-    this.changeDetector.markForCheck();
-  }
-
-  private refreshBrowser(): void {
-    this.document.defaultView?.location.reload();
-  }
-
-  private stopAndStartSession(id: string): void {
-    if (this.recoverySubscription) return;
-    this.clearRecoveryRetry();
-    this.message = 'Reconnecting to the local API…';
-    this.recoverySubscription = this.api.sessionAction(id, 'stop').subscribe({
-      next: () => { this.recoverySubscription = null; this.finishSessionRecovery(id); },
-      error: error => {
-        this.recoverySubscription = null;
-        if (error.status === 404) this.finishSessionRecovery(id);
-        else if (this.isTransientApiFailure(error.status)) {
-          this.message = 'Waiting for the local API… Reconnecting in 30 seconds.';
-          this.recoveryRetryTimer = setTimeout(() => {
-            this.recoveryRetryTimer = null;
-            this.stopAndStartSession(id);
-          }, 30000);
-        } else {
-          this.error = 'Could not recover the playback session. Check the server connection.';
-        }
-        this.changeDetector.markForCheck();
-      }
-    });
-  }
-
-  private finishSessionRecovery(id: string): void {
-    if (sessionStorage.getItem('twitch-loop-recovery-session') !== id) return;
-    this.clearRecoveryRetry();
-    this.clearBackendUpdateTimeout();
-    sessionStorage.removeItem('twitch-loop-recovery-session');
-    sessionStorage.removeItem(backendUpdateStorageKey);
-    if (sessionStorage.getItem('twitch-loop-session') === id) sessionStorage.removeItem('twitch-loop-session');
-    this.pollSubscription?.unsubscribe();
-    this.session = null;
-    this.chatEmbedUrl = null;
-    this.lastRevision = 0;
-    this.playerMounted = false;
-    this.playerPlaying = false;
-    this.playbackBlocked = false;
-    this.player.destroy();
-    void this.wakeLock.release();
-    this.start();
-  }
-
-  private clearRecoveryRetry(): void {
-    if (this.recoveryRetryTimer !== null) clearTimeout(this.recoveryRetryTimer);
-    this.recoveryRetryTimer = null;
   }
 
   private clearBackendUpdateTimeout(): void {
@@ -354,8 +300,18 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
         this.scheduleBackendUpdateTimeout(sessionId);
         return;
       }
-      sessionStorage.setItem('twitch-loop-recovery-session', sessionId);
-      this.refreshBrowser();
+      this.clearBackendUpdateTimeout();
+      sessionStorage.removeItem(backendUpdateStorageKey);
+      sessionStorage.removeItem('twitch-loop-session');
+      this.pollSubscription?.unsubscribe();
+      this.session = null;
+      this.lastRevision = 0;
+      this.playerMounted = false;
+      this.playerPlaying = false;
+      this.playbackBlocked = false;
+      this.player.destroy();
+      void this.wakeLock.release();
+      this.start();
     }, Math.max(0, lastUpdateAt + backendUpdateTimeoutMs - Date.now()));
   }
 
