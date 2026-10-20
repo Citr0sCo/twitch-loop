@@ -23,6 +23,7 @@ export class HlsPlayer {
   private hls: Hls | null = null;
   private elementId: string | null = null;
   private currentChannel: string | null = null;
+  private sourceLoaded = false;
   private onPlaying: (() => void) | null = null;
   private onPlaybackBlocked: (() => void) | null = null;
   private lastCurrentTime = 0;
@@ -79,7 +80,12 @@ export class HlsPlayer {
           fragLoadingTimeOut: 20000
         });
         this.hls = hls;
-        hls.on(HlsPlayerClass.Events.MEDIA_ATTACHED, () => hls.loadSource(this.masterUrl(channel)));
+        hls.on(HlsPlayerClass.Events.MEDIA_ATTACHED, () => {
+          // hls.js re-attaches the media element whenever loadSource changes the URL, so this event
+          // fires again for a channel switch. Only the very first attach should load a source.
+          if (this.hls !== hls || this.sourceLoaded) return;
+          this.loadSource(this.currentChannel ?? channel);
+        });
         hls.on(HlsPlayerClass.Events.MANIFEST_PARSED, () => this.handleManifestParsed());
         hls.on(HlsPlayerClass.Events.LEVEL_LOADED, (_event, data) => this.handleLevelLoaded(data));
         hls.on(HlsPlayerClass.Events.FRAG_LOADED, (_event, data) => this.handleFragLoaded(data));
@@ -111,7 +117,7 @@ export class HlsPlayer {
     this.setMutedForAds(false);
 
     if (this.hls) {
-      this.hls.loadSource(this.masterUrl(channel));
+      this.loadSource(channel);
       this.hls.startLoad();
     } else {
       this.video.src = this.masterUrl(channel);
@@ -155,6 +161,7 @@ export class HlsPlayer {
 
     this.elementId = null;
     this.currentChannel = null;
+    this.sourceLoaded = false;
     this.lastCurrentTime = 0;
     this.activeAdRanges = [];
     this.adFreeMode = false;
@@ -328,6 +335,11 @@ export class HlsPlayer {
   private clearAdClearTimer(): void {
     if (this.adClearTimer !== null) clearTimeout(this.adClearTimer);
     this.adClearTimer = null;
+  }
+
+  private loadSource(channel: string): void {
+    this.sourceLoaded = true;
+    this.hls?.loadSource(this.masterUrl(channel));
   }
 
   private masterUrl(channel: string): string {
