@@ -1,16 +1,18 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { PLAYER_MODE_STORAGE_KEY } from '../core/player-mode';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 import { WatchComponent } from './watch.component';
 
 describe('WatchComponent', () => {
-  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'getHealth', 'setChannel', 'play', 'destroy']);
+  const player = jasmine.createSpyObj<PlayerService>('PlayerService', ['mount', 'setOnPlaying', 'setOnPlaybackBlocked', 'getHealth', 'setChannel', 'play', 'destroy', 'setMode']);
   const wakeLock = jasmine.createSpyObj<WakeLockService>('WakeLockService', ['supported', 'active', 'request', 'release']);
 
   beforeEach(async () => {
     sessionStorage.clear();
+    localStorage.removeItem(PLAYER_MODE_STORAGE_KEY);
     player.mount.and.returnValue(Promise.resolve());
     player.getHealth.and.returnValue(null);
     wakeLock.supported.and.returnValue(true);
@@ -46,6 +48,7 @@ describe('WatchComponent', () => {
     player.getHealth.calls.reset();
     player.play.calls.reset();
     player.destroy.calls.reset();
+    player.setMode.calls.reset();
   });
 
   it('starts playback automatically on a fresh Watch visit', async () => {
@@ -144,6 +147,27 @@ describe('WatchComponent', () => {
       sessionStorage.removeItem('twitch-loop-session');
       jasmine.clock().uninstall();
     }
+  });
+
+  it('uses the experimental HLS player when the browser setting selects it', async () => {
+    localStorage.setItem(PLAYER_MODE_STORAGE_KEY, 'hls');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    expect(player.setMode).toHaveBeenCalledWith('hls');
+    expect(fixture.componentInstance.playerMode).toBe('hls');
+
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http);
+    const waiting = {
+      sessionId: 'mode-session', revision: 1, state: 'waiting', automationMode: 'auto', channel: null,
+      selectionTier: null, reason: 'awaiting_fresh_live_status', statusFreshness: 'unknown', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    };
+    http.expectOne('/api/sessions').flush(waiting);
+    http.expectOne('/api/sessions/mode-session/current-stream').flush(waiting);
+    await fixture.whenStable();
+    fixture.destroy();
+    localStorage.removeItem(PLAYER_MODE_STORAGE_KEY);
   });
 
   it('retries starting playback after a transient backend failure', async () => {

@@ -2,6 +2,7 @@
 .page-heading p { color: #aaaab0; }
 .eyebrow { color: #b9a1ff; font-size: .8rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
+.heading-badges { align-items: center; display: inline-flex; flex-wrap: wrap; gap: .5rem; }
 .status { background: #3a303d; border-radius: 999px; color: #d2c5de; padding: .4rem .8rem; text-transform: capitalize; }
 .status.live, .channel-state.live { background: #153d2b; color: #8ae1ad; }
 .player-anchor { aspect-ratio: 16 / 9; min-height: 300px; }
@@ -9,6 +10,8 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .player-shell.theatre { aspect-ratio: auto; border-radius: 0; height: 100%; min-height: 0; position: relative; width: 100%; }
 .player-shell.corner-player { aspect-ratio: auto; border: 1px solid #55555d; border-radius: .6rem; box-shadow: 0 .5rem 2rem #000b; height: 226px; inset: 1rem 1rem auto auto; min-height: 0; position: fixed; width: min(400px, 100vw); z-index: 1000; }
 .player { height: 100%; width: 100%; }
+.player video.hls-player { background: #000; height: 100%; object-fit: contain; width: 100%; }
+.mode-badge { background: #2d2440; border: 1px solid #6b4fb3; border-radius: 999px; color: #cbb7ff; font-size: .75rem; font-weight: 700; letter-spacing: .04em; padding: .3rem .65rem; text-transform: uppercase; }
 .control-buttons button { align-items: center; display: inline-flex; gap: .5rem; }
 .control-buttons svg, .theatre-exit-bar svg { fill: none; flex: none; height: 1.1rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 1.1rem; }
 .watch-page.theatre-active { align-items: stretch; display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100dvh; left: 0; overflow: hidden; position: fixed; right: 0; top: 0; width: auto; z-index: 1000; }

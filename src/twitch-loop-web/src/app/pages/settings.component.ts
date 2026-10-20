@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService, FollowingChannel, ScheduleResponse, Settings } from '../core/api.service';
+import { PlayerMode, readPlayerMode, writePlayerMode } from '../core/player-mode';
 
 const ANY_FOLLOWING = 'any-following';
 const ANY = 'any';
@@ -32,6 +33,7 @@ export class SettingsComponent implements OnInit {
     sessionDurationHours: 24,
     source: 'database'
   };
+  playerMode: PlayerMode = readPlayerMode();
   settingsLoading = true;
   scheduleLoading = true;
   settingsLoaded = false;
@@ -109,6 +111,11 @@ export class SettingsComponent implements OnInit {
     });
   }
 
+  onPlayerModeChange(mode: PlayerMode): void {
+    this.playerMode = mode;
+    writePlayerMode(mode);
+  }
+
   addChannel(login: string): void {
     const normalized = login.trim().toLowerCase();
     if (normalized && !this.editableChannels.some(channel => channel.toLowerCase() === normalized)) this.editableChannels.push(normalized);
@@ -129,6 +136,7 @@ export class SettingsComponent implements OnInit {
   saveSettings(): void {
     if (!this.canSaveSettings) return;
     this.error = ''; this.message = '';
+    writePlayerMode(this.playerMode);
     this.api.saveSettings(this.settings).subscribe({
       next: settings => { this.settings = settings; this.message = 'Playback settings saved.'; this.changeDetector.markForCheck(); },
       error: () => { this.error = 'Settings were changed elsewhere or are invalid.'; this.changeDetector.markForCheck(); }

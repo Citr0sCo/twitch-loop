@@ -12,7 +12,8 @@ A self-hosted Twitch player with an always-on ordered list of preferred streams 
 - Automatic priority handoff to the first live configured channel, then any followed streamer, then any live Twitch streamer.
 - Followed-channel selection plus manual Twitch login entry; unknown upstream state never becomes offline.
 - Independent browser playback sessions with start, stop, auto-pause, manual selection and reset controls.
-- Official Twitch player SDK integration, theatre mode, best-effort native fullscreen and Screen Wake Lock.
+- Official Twitch player SDK integration, plus an optional experimental HLS player that uses Twitch's unofficial playback endpoints to avoid ads.
+- Theatre mode, best-effort native fullscreen and Screen Wake Lock.
 - SQLite persistence under `/data`, protected ASP.NET data-protection keys, health checks and a single-container deployment.
 
 ## Quick start with Docker Compose
@@ -77,4 +78,10 @@ Docker validation:
 docker build --platform linux/amd64 -t twitch-loop .
 ```
 
-The acceptance suite should additionally exercise real OAuth, Twitch API rate headers, multi-browser sessions and audible handoffs in current Chrome, Edge, Firefox, Safari and iPad Safari. Browser autoplay, third-party cookie restrictions and Wake Lock are capability-dependent; this project does not promise background playback, ad-free playback or uninterrupted locked-device execution.
+The acceptance suite should additionally exercise real OAuth, Twitch API rate headers, multi-browser sessions and audible handoffs in current Chrome, Edge, Firefox, Safari and iPad Safari. Browser autoplay, third-party cookie restrictions and Wake Lock are capability-dependent; this project does not promise background playback or uninterrupted locked-device execution. The default official player does not promise ad-free playback. The experimental HLS player attempts ad avoidance by preferring Twitch's `autoplay` playback variants and switching to them when an ad break is detected; it relies on undocumented Twitch endpoints, may stop working without notice, and is not supported by Twitch.
+
+## Experimental HLS player
+
+Settings → Playback → Player switches this browser between the official Twitch player and the experimental HLS player. The setting is stored in `localStorage`, so it is per browser/device. HLS mode asks the backend for a merged Twitch master playlist, prefers the ad-free `autoplay` variants where the same quality exists, and serves the resulting playlists and segments through authenticated same-origin endpoints so the browser never talks to Twitch's CDN directly. It keeps the higher-quality variants for normal playback and switches to the best ad-free variant while an ad break is active.
+
+The HLS player needs Media Source Extensions for ad detection and quality switching; browsers without MSE fall back to native HLS where available, which plays the stream but does not skip ads. Playback tokens are requested anonymously, so subscriber-only streams that the official embed can play through the viewer's Twitch session may not be available in HLS mode. It is an unofficial integration and can break whenever Twitch changes its playback API or ad markers.
