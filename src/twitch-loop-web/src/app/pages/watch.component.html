@@ -3,11 +3,17 @@
     <div>
       <span *ngIf="session?.channel" class="now-playing">{{ playerPlaying ? 'Playing' : 'Switching to' }}: {{ session.channel }}</span>
     </div>
-    <span class="status" [class.live]="playerPlaying">{{ playbackState }}</span>
+    <span class="heading-badges">
+      <span *ngIf="playerMode === 'hls'" class="mode-badge">Experimental HLS</span>
+      <span class="status" [class.live]="playerPlaying">{{ playbackState }}</span>
+    </span>
   </section>
 
   <div *ngIf="error" class="notice error" role="alert">{{ error }}</div>
   <div *ngIf="message" class="notice warning" role="status">{{ message }}</div>
+  <div *ngIf="playerMode === 'hls'" class="notice info" role="status">
+    Experimental HLS mode is active. Playback uses Twitch's unofficial endpoints to avoid ads and may stop working without notice.
+  </div>
 
   <div #playerAnchor class="player-anchor">
     <div class="player-shell" [class.theatre]="theatre" [class.corner-player]="cornerPlayer">

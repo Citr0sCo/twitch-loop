@@ -3,6 +3,7 @@ import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, 
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { EMPTY, Subscription, catchError, interval, startWith, switchMap } from 'rxjs';
 import { ApiService, PriorityStatus, SessionState } from '../core/api.service';
+import { PLAYER_MODE_STORAGE_KEY, PlayerMode, readPlayerMode } from '../core/player-mode';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
 
@@ -36,12 +37,15 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   private durationNow = Date.now();
   private lastRevision = 0;
   private playerMounted = false;
+  private mountingPlayer = false;
+  private pendingChannel: string | null = null;
   private lastLoggedPlayingChannel: string | null = null;
   session: SessionState | null = null;
   chatEmbedUrl: SafeResourceUrl | null = null;
   priorityStatus: PriorityStatus = { channels: [], liveStreams: [], checkedAt: null, timeZone: 'Europe/London' };
   playerPlaying = false;
   playbackBlocked = false;
+  playerMode: PlayerMode = 'official';
   starting = false;
   theatre = false;
   cornerPlayer = false;
@@ -111,6 +115,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
       this.changeDetector.markForCheck();
     });
     this.playerHealthSubscription = interval(playerHealthIntervalMs).subscribe(() => this.checkPlayerHealth());
+    this.playerMode = readPlayerMode();
+    this.player.setMode(this.playerMode);
     this.player.setOnPlaying(() => this.refreshFromPlayer(() => this.onPlayerPlaying()));
     this.player.setOnPlaybackBlocked(() => this.refreshFromPlayer(() => this.playbackBlocked = true));
     this.theatre = sessionStorage.getItem('twitch-loop-theatre') === 'true';
@@ -192,7 +198,7 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.sessionAction(this.session.sessionId, action).subscribe({ next: state => this.apply(state) });
   }
 
-  reset(): void { this.clearStartRetry(); this.clearBackendUpdateTimeout(); sessionStorage.removeItem(backendUpdateStorageKey); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
+  reset(): void { this.clearStartRetry(); this.clearBackendUpdateTimeout(); sessionStorage.removeItem(backendUpdateStorageKey); this.startSubscription?.unsubscribe(); this.startSubscription = null; this.starting = false; this.pollSubscription?.unsubscribe(); sessionStorage.removeItem('twitch-loop-session'); this.session = null; this.chatEmbedUrl = null; this.lastRevision = 0; this.playerMounted = false; this.pendingChannel = null; this.playerPlaying = false; this.playbackBlocked = false; this.cornerPlayer = false; this.message = ''; this.error = ''; this.player.destroy(); void this.wakeLock.release(); }
   playFromGesture(): void { this.playbackBlocked = false; this.player.play(); }
   toggleTheatre(): void {
     this.theatre = !this.theatre;
@@ -208,6 +214,14 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @HostListener('window:resize')
   onResize(): void { this.updateCornerPlayer(); }
+
+  @HostListener('window:storage', ['$event'])
+  onStorage(event: StorageEvent): void {
+    if (event.key !== PLAYER_MODE_STORAGE_KEY) return;
+    const mode = readPlayerMode();
+    if (mode === this.playerMode) return;
+    this.applyPlayerMode(mode);
+  }
 
   @HostListener('window:online')
   onConnectionRestored(): void {
@@ -434,6 +448,23 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
 
 
 
+  private applyPlayerMode(mode: PlayerMode): void {
+    this.playerMode = mode;
+    this.player.setMode(mode);
+    const channel = this.session?.channel;
+    if (channel && this.playerMounted) {
+      this.playerMounted = false;
+      this.playerPlaying = false;
+      this.playbackBlocked = false;
+      this.unhealthyPlayerSamples = 0;
+      this.message = mode === 'hls'
+        ? 'Switching to the experimental HLS player…'
+        : 'Switching to the official Twitch player…';
+      void this.mountOrSwitch(channel);
+    }
+    this.changeDetector.markForCheck();
+  }
+
   private createChatEmbedUrl(channel: string): SafeResourceUrl {
     const url = new URL(`https://www.twitch.tv/embed/${encodeURIComponent(channel)}/chat`);
     url.searchParams.set('parent', this.document.location.hostname);
@@ -442,6 +473,8 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private async mountOrSwitch(channel: string): Promise<void> {
+    if (this.mountingPlayer) { this.pendingChannel = channel; return; }
+    this.mountingPlayer = true;
     try {
       if (this.playerMounted) this.player.setChannel(channel);
       else {
@@ -451,10 +484,18 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
       this.playerMountedAt = Date.now();
       this.unhealthyPlayerSamples = 0;
       this.message = '';
+      this.error = '';
       this.changeDetector.markForCheck();
     } catch {
-      this.error = 'The official Twitch player could not be loaded. Check HTTPS, embed parents, and browser extensions.';
+      this.error = this.playerMode === 'hls'
+        ? 'The experimental HLS player could not start. Check the server connection or switch back to the official player in Settings.'
+        : 'The official Twitch player could not be loaded. Check HTTPS, embed parents, and browser extensions.';
       this.changeDetector.markForCheck();
+    } finally {
+      this.mountingPlayer = false;
     }
+    const pending = this.pendingChannel;
+    this.pendingChannel = null;
+    if (pending && pending !== channel) await this.mountOrSwitch(pending);
   }
 }

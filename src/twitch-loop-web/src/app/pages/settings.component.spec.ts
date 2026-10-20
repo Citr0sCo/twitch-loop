@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { PLAYER_MODE_STORAGE_KEY } from '../core/player-mode';
 import { SettingsComponent } from './settings.component';
 
 const settings = {
@@ -44,6 +45,19 @@ describe('SettingsComponent', () => {
     expect(fixture.nativeElement.querySelector('.schedule-fields').disabled).toBeTrue();
     loadSettings(TestBed.inject(HttpTestingController));
     await fixture.whenStable();
+  });
+
+  it('remembers the experimental HLS player mode for this browser', async () => {
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    loadSettings(TestBed.inject(HttpTestingController));
+    await fixture.whenStable();
+
+    fixture.componentInstance.onPlayerModeChange('hls');
+    expect(fixture.componentInstance.playerMode).toBe('hls');
+    expect(localStorage.getItem(PLAYER_MODE_STORAGE_KEY)).toBe('hls');
+    fixture.destroy();
+    localStorage.removeItem(PLAYER_MODE_STORAGE_KEY);
   });
 
   it('shows one always-on ordered list and no time controls', async () => {

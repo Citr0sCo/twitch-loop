@@ -1,3 +1,4 @@
+using System.Net;
 using TwitchLoop.Api;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Antiforgery;
@@ -40,6 +41,15 @@ builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializ
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient<TwitchApiClient>(client => client.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHttpClient<TwitchPlaybackClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All });
+builder.Services.AddHttpClient("twitch-playback-proxy", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TwitchLoop/1.0");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All });
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<SqliteStore>();
 builder.Services.AddSingleton<TokenStore>();
@@ -65,7 +75,7 @@ if (app.Environment.IsDevelopment())
 app.Use(async (context, next) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/ https://www.twitch.tv https://www.twitch.tv/; script-src 'self' https://player.twitch.tv 'sha256-LMY6wYoFV9I4wWzxaq1N/dTpl4iurQktw706UCHK3vM='; connect-src 'self' https://api.twitch.tv; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
+    context.Response.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src https://player.twitch.tv https://player.twitch.tv/ https://www.twitch.tv https://www.twitch.tv/; script-src 'self' https://player.twitch.tv 'sha256-LMY6wYoFV9I4wWzxaq1N/dTpl4iurQktw706UCHK3vM='; connect-src 'self' https://api.twitch.tv; worker-src 'self' blob:; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'";
     await next();
 });
 app.UseStaticFiles();
