@@ -8,6 +8,7 @@ const settings = {
   version: 1,
   keepAwake: true,
   autoMaximiseStream: true,
+  maximiseMode: 'theatre',
   browserPollSeconds: 15,
   sessionDurationHours: 24,
   source: 'database'
@@ -71,8 +72,6 @@ describe('SettingsComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.channel-list').length).toBe(1);
     expect(fixture.nativeElement.textContent).toContain('Any following streamer who is live');
     expect(fixture.nativeElement.textContent).toContain('Any live Twitch streamer');
-    expect(fixture.nativeElement.textContent).not.toContain('Maximise mode');
-    expect(fixture.nativeElement.textContent).not.toContain('Native fullscreen');
     expect(fixture.nativeElement.querySelector('.settings-fields').disabled).toBeFalse();
     expect(fixture.nativeElement.querySelector('.schedule-fields').disabled).toBeFalse();
   });

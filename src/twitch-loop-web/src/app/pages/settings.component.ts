@@ -28,6 +28,7 @@ export class SettingsComponent implements OnInit {
     version: 1,
     keepAwake: true,
     autoMaximiseStream: true,
+    maximiseMode: 'theatre',
     browserPollSeconds: 15,
     sessionDurationHours: 24,
     source: 'database'

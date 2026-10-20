@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "keepAwake": true,
   "autoMaximiseStream": true,
+  "maximiseMode": "theatre",
   "browserPollSeconds": 15,
   "channels": ["channel_a", "channel_b", "any-following", "any"]
 }

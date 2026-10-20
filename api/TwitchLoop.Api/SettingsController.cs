@@ -18,6 +18,7 @@ public sealed class SettingsController(SqliteStore store) : ControllerBase
     {
         var errors = new Dictionary<string, string[]>();
         if (settings.BrowserPollSeconds is < 5 or > 120 || settings.SessionDurationHours is < 1 or > 24) errors["polling"] = ["Browser polling and session values are outside the supported range."];
+        if (settings.MaximiseMode is not ("theatre" or "fullscreen")) errors["maximiseMode"] = ["Maximise mode must be theatre or fullscreen."];
         if (errors.Count > 0) return BadRequest(new { errors });
         var current = await store.GetSettingsAsync(cancellationToken);
         if (expectedVersion.HasValue && expectedVersion.Value != current.Version) return Conflict(new { error = "settings_version_conflict", version = current.Version });
