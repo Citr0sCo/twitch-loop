@@ -13,8 +13,7 @@
   </div><label>Player<select name="playerMode" [ngModel]="playerMode" (ngModelChange)="onPlayerModeChange($event)"><option value="official">Official Twitch player (stable)</option><option value="hls">Experimental HLS player (ad-free attempt)</option></select></label>
   <p class="field-hint">The experimental HLS player uses Twitch's unofficial playback endpoints to avoid ads. It applies to this browser, may stop working without notice, and is not supported by Twitch.</p>
   <label class="check"><input name="keepAwake" type="checkbox" [(ngModel)]="settings.keepAwake"> Keep device awake while playing</label>
-  <label class="check"><input name="autoMaximiseStream" type="checkbox" [(ngModel)]="settings.autoMaximiseStream"> Auto-maximise stream</label>
-  <label>Maximise mode<select name="maximiseMode" [(ngModel)]="settings.maximiseMode"><option value="theatre">Theatre</option><option value="fullscreen">Native fullscreen when available</option></select></label></section>
+  <label class="check"><input name="autoMaximiseStream" type="checkbox" [(ngModel)]="settings.autoMaximiseStream"> Auto-maximise stream</label></section>
   </fieldset>
   <button class="primary" type="submit" [disabled]="!canSaveSettings">Save playback settings</button>
 </form>

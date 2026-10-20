@@ -13,7 +13,7 @@ A self-hosted Twitch player with an always-on ordered list of preferred streams 
 - Followed-channel selection plus manual Twitch login entry; unknown upstream state never becomes offline.
 - Independent browser playback sessions with start, stop, auto-pause, manual selection and reset controls.
 - Official Twitch player SDK integration, plus an optional experimental HLS player that uses Twitch's unofficial playback endpoints to avoid ads.
-- Theatre mode, best-effort native fullscreen and Screen Wake Lock.
+- Theatre mode and Screen Wake Lock.
 - SQLite persistence under `/data`, protected ASP.NET data-protection keys, health checks and a single-container deployment.
 
 ## Quick start with Docker Compose

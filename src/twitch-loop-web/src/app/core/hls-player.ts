@@ -6,6 +6,18 @@ interface AdRange {
   end: number;
 }
 
+export function applyHlsVideoStyles(video: HTMLVideoElement): void {
+  video.style.background = '#000';
+  video.style.display = 'block';
+  video.style.height = '100%';
+  video.style.inset = '0';
+  video.style.maxHeight = '100%';
+  video.style.maxWidth = '100%';
+  video.style.objectFit = 'contain';
+  video.style.position = 'absolute';
+  video.style.width = '100%';
+}
+
 export class HlsPlayer {
   private video: HTMLVideoElement | null = null;
   private hls: Hls | null = null;
@@ -35,6 +47,7 @@ export class HlsPlayer {
 
     const video = document.createElement('video');
     video.className = 'hls-player';
+    applyHlsVideoStyles(video);
     video.autoplay = true;
     video.controls = true;
     video.playsInline = true;

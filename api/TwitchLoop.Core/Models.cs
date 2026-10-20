@@ -32,7 +32,6 @@ public sealed class AppSettings
     public int Version { get; set; } = 1;
     public bool KeepAwake { get; set; } = true;
     public bool AutoMaximiseStream { get; set; } = true;
-    public string MaximiseMode { get; set; } = "theatre";
     public int BrowserPollSeconds { get; set; } = 15;
     public int SessionDurationHours { get; set; } = 24;
     public string Source { get; set; } = "database";

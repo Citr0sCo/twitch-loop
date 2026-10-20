@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { applyHlsVideoStyles } from '../core/hls-player';
 import { PLAYER_MODE_STORAGE_KEY } from '../core/player-mode';
 import { PlayerService } from '../core/player.service';
 import { WakeLockService } from '../core/wake-lock.service';
@@ -560,13 +561,29 @@ describe('WatchComponent', () => {
 
     const theatreButton = Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
       .find(button => button.textContent?.trim() === 'Theatre mode')!;
+    const playerShell = fixture.nativeElement.querySelector('.player-shell') as HTMLElement;
+    const player = playerShell.querySelector('.player') as HTMLElement;
+    const video = document.createElement('video');
+    video.className = 'hls-player';
+    applyHlsVideoStyles(video);
+    player.appendChild(video);
+    fixture.detectChanges();
+    const playerBounds = player.getBoundingClientRect();
+    const videoBounds = video.getBoundingClientRect();
+    expect(videoBounds.width).toBeCloseTo(playerBounds.width, 0);
+    expect(videoBounds.height).toBeCloseTo(playerBounds.height, 0);
+
     theatreButton.click();
     fixture.detectChanges();
-    const playerShell = fixture.nativeElement.querySelector('.player-shell') as HTMLElement;
     expect(playerShell.classList.contains('theatre')).toBeTrue();
-    expect(getComputedStyle(playerShell).position).toBe('relative');
+    expect(getComputedStyle(playerShell).position).toBe('absolute');
     expect(parseFloat(getComputedStyle(playerShell).height)).toBeCloseTo(window.innerHeight - (fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement).getBoundingClientRect().height, 0);
     expect(parseFloat(getComputedStyle(playerShell).width)).toBeCloseTo(document.documentElement.clientWidth, 0);
+    const theatreBounds = player.getBoundingClientRect();
+    const theatreVideoBounds = video.getBoundingClientRect();
+    expect(theatreVideoBounds.width).toBeCloseTo(theatreBounds.width, 0);
+    expect(theatreVideoBounds.height).toBeCloseTo(theatreBounds.height, 0);
+    expect(theatreVideoBounds.bottom).toBeLessThanOrEqual(playerShell.getBoundingClientRect().bottom + 1);
     expect(document.body.classList.contains('theatre-mode')).toBeTrue();
     const exitBar = fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement;
     expect(exitBar.textContent).toContain('Exit theatre mode');
