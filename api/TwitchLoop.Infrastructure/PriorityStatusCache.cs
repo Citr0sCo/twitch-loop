@@ -3,7 +3,7 @@ using TwitchLoop.Core;
 namespace TwitchLoop.Infrastructure;
 
 public sealed record PriorityChannelStatus(string Login, bool IsLive);
-public sealed record LiveStreamStatus(string Login, string Name, int ViewerCount, DateTimeOffset StartedAt);
+public sealed record LiveStreamStatus(string Login, string Name, int ViewerCount, DateTimeOffset StartedAt, string? GameName);
 public sealed record PriorityStatusSnapshot(IReadOnlyList<PriorityChannelStatus> Channels, IReadOnlyList<LiveStreamStatus> LiveStreams, DateTimeOffset? CheckedAt);
 
 public sealed class PriorityStatusCache
@@ -19,7 +19,7 @@ public sealed class PriorityStatusCache
             .ToArray();
         var streams = liveStreams
             .DistinctBy(stream => stream.UserLogin, StringComparer.OrdinalIgnoreCase)
-            .Select(stream => new LiveStreamStatus(stream.UserLogin, stream.UserName, stream.ViewerCount, stream.StartedAt))
+            .Select(stream => new LiveStreamStatus(stream.UserLogin, stream.UserName, stream.ViewerCount, stream.StartedAt, string.IsNullOrWhiteSpace(stream.GameName) ? null : stream.GameName))
             .ToArray();
         Volatile.Write(ref snapshot, new PriorityStatusSnapshot(channels, streams, checkedAt));
     }

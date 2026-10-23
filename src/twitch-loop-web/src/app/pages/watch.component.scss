@@ -18,7 +18,9 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
 .watch-page.theatre-active .player-anchor { aspect-ratio: auto; grid-row: 1; height: 100%; min-height: 0; overflow: hidden; }
 .theatre-exit-bar { align-items: center; background: #0e0e10; border-top: 1px solid #333; box-sizing: border-box; column-gap: clamp(.35rem, 1vw, .75rem); display: grid; grid-row: 2; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); min-height: 0; padding: 15px; width: 100%; z-index: 1001; }
 .theatre-exit-bar button { align-items: center; display: inline-flex; font-size: .85rem; gap: .4rem; grid-column: 2; justify-content: center; justify-self: center; padding: .25rem .5rem; }
-.theatre-last-updated { color: #aaaab0; font-size: .75rem; grid-column: 3; justify-self: end; text-align: right; white-space: nowrap; }
+.theatre-exit-meta { align-items: center; column-gap: clamp(.35rem, 1vw, .75rem); display: flex; grid-column: 3; justify-self: end; min-width: 0; }
+.theatre-game { color: #cbb7ff; font-size: .75rem; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theatre-last-updated { color: #aaaab0; font-size: .75rem; text-align: right; white-space: nowrap; }
 .live-chat-heading { align-items: center; display: flex; flex-wrap: wrap; gap: .35rem 1rem; justify-content: space-between; }
 .live-chat-heading h2 { margin: 0; }
 .stream-live-stats { align-items: center; display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
@@ -60,6 +62,7 @@ h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: .4rem 0; }
   .theatre-stream-meta { font-size: .65rem; }
   .theatre-stream-meta .stream-live-stats { min-width: 0; }
   .theatre-last-updated { font-size: .6rem; }
+  .theatre-game { font-size: .6rem; max-width: 14ch; }
   .theatre-exit-bar button { font-size: .65rem; gap: .25rem; padding: .2rem .35rem; }
   .section-heading { align-items: start; flex-direction: column; }
   .channel-priorities li { gap: .5rem; grid-template-columns: minmax(0, 1fr) auto; }

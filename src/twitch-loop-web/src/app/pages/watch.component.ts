@@ -63,6 +63,15 @@ export class WatchComponent implements OnInit, AfterViewInit, OnDestroy {
     return channel ? this.priorityStatus.liveStreams.find(stream => stream.login.toLowerCase() === channel) ?? null : null;
   }
 
+  get currentStreamerName(): string | null {
+    if (!this.session?.channel) return null;
+    return this.currentLiveStream?.name || this.session.channel;
+  }
+
+  get currentGame(): string | null {
+    return this.currentLiveStream?.gameName?.trim() || null;
+  }
+
   formatLiveDuration(): string | null {
     const startedAt = this.currentLiveStream?.startedAt;
     if (!startedAt) return null;

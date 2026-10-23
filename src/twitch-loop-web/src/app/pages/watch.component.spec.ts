@@ -34,7 +34,7 @@ describe('WatchComponent', () => {
   function flushPriorityStatus(
     http: HttpTestingController,
     channels: { login: string; isLive: boolean | null }[] = [],
-    liveStreams: { login: string; name: string; viewerCount: number; startedAt: string }[] = []
+    liveStreams: { login: string; name: string; viewerCount: number; startedAt: string; gameName?: string | null }[] = []
   ): void {
     http.expectOne('/api/channels/priority-status').flush({ channels, liveStreams, checkedAt: '2026-10-06T05:00:00Z', timeZone: 'Europe/London' });
   }
@@ -458,6 +458,62 @@ describe('WatchComponent', () => {
     expect(fixture.nativeElement.querySelector('.fallback-channel').textContent).toContain('Randomly chosen from Twitch live channels');
     fixture.destroy();
     sessionStorage.removeItem('twitch-loop-session');
+  });
+
+  it('shows the streamer and game in the heading and left of the theatre updated time', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'game-session');
+    sessionStorage.setItem('twitch-loop-theatre', 'true');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http, [], [{
+      login: 'game_stream', name: 'Game Streamer', viewerCount: 42, gameName: 'Hollow Knight',
+      startedAt: new Date(Date.now() - 10 * 60_000).toISOString()
+    }]);
+    http.expectOne('/api/sessions/game-session/current-stream').flush({
+      sessionId: 'game-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'game_stream',
+      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector('.page-heading .now-playing') as HTMLElement;
+    expect(heading.textContent?.trim()).toBe('Game Streamer • Hollow Knight');
+    const exitBar = fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement;
+    const game = exitBar.querySelector('.theatre-game') as HTMLElement;
+    expect(game.textContent?.trim()).toBe('Hollow Knight');
+    const lastUpdated = exitBar.querySelector('.theatre-last-updated') as HTMLElement;
+    expect(game.getBoundingClientRect().right).toBeLessThan(lastUpdated.getBoundingClientRect().left);
+    fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+    sessionStorage.removeItem('twitch-loop-theatre');
+  });
+
+  it('omits the game label when Twitch reports no category', async () => {
+    sessionStorage.setItem('twitch-loop-session', 'no-game-session');
+    sessionStorage.setItem('twitch-loop-theatre', 'true');
+    const fixture = TestBed.createComponent(WatchComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    flushPriorityStatus(http, [], [{ login: 'no_game_stream', name: 'No Game Streamer', viewerCount: 7, startedAt: new Date().toISOString(), gameName: '' }]);
+    http.expectOne('/api/sessions/no-game-session/current-stream').flush({
+      sessionId: 'no-game-session', revision: 1, state: 'playing', automationMode: 'auto', channel: 'no_game_stream',
+      selectionTier: 'priority', reason: 'priority_channel_live', statusFreshness: 'fresh', pollAfterSeconds: 15,
+      settingsVersion: 1, expiresAt: '2026-10-05T18:00:00Z'
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector('.page-heading .now-playing') as HTMLElement;
+    expect(heading.textContent?.trim()).toBe('No Game Streamer');
+    expect(heading.textContent).not.toContain('•');
+    const exitBar = fixture.nativeElement.querySelector('.theatre-exit-bar') as HTMLElement;
+    expect(exitBar.querySelector('.theatre-last-updated')).not.toBeNull();
+    expect(exitBar.querySelector('.theatre-game')).toBeNull();
+    fixture.destroy();
+    sessionStorage.removeItem('twitch-loop-session');
+    sessionStorage.removeItem('twitch-loop-theatre');
   });
 
   it('increments the live duration locally every second without extra API calls', async () => {
