@@ -1,7 +1,7 @@
 <div class="watch-page" [class.theatre-active]="theatre">
   <section class="page-heading">
     <div>
-      <span *ngIf="session?.channel" class="now-playing">{{ playerPlaying ? 'Playing' : 'Switching to' }}: {{ session.channel }}</span>
+      <span *ngIf="session?.channel" class="now-playing">{{ currentStreamerName }}<ng-container *ngIf="currentGame"> • {{ currentGame }}</ng-container></span>
     </div>
     <span class="heading-badges">
       <span *ngIf="playerMode === 'hls'" class="mode-badge">Experimental HLS</span>
@@ -95,6 +95,9 @@
     <button type="button" class="secondary" (click)="toggleTheatre()">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M14 10 20 4m-6 0h6v6M10 14l-6 6" /></svg>Exit theatre mode
     </button>
-    <span *ngIf="priorityStatus.checkedAt" class="theatre-last-updated" [attr.aria-label]="'Last updated ' + formatLastChecked()">Updated: {{ formatLastChecked() }}</span>
+    <div class="theatre-exit-meta">
+      <span *ngIf="currentGame" class="theatre-game" [attr.aria-label]="'Now playing ' + currentGame">{{ currentGame }}</span>
+      <span *ngIf="priorityStatus.checkedAt" class="theatre-last-updated" [attr.aria-label]="'Last updated ' + formatLastChecked()">Updated: {{ formatLastChecked() }}</span>
+    </div>
   </div>
 </div>

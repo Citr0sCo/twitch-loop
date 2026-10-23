@@ -52,6 +52,7 @@ public sealed class SessionWorkerTests
             Assert.That(priorityStatus.Snapshot.LiveStreams.Single().Name, Is.EqualTo("Followed Live"));
             Assert.That(priorityStatus.Snapshot.LiveStreams.Single().ViewerCount, Is.EqualTo(42));
             Assert.That(priorityStatus.Snapshot.LiveStreams.Single().StartedAt, Is.EqualTo(DateTimeOffset.Parse("2026-10-05T12:00:00Z")));
+            Assert.That(priorityStatus.Snapshot.LiveStreams.Single().GameName, Is.EqualTo("Test"));
         }
         finally
         {
