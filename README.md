@@ -41,7 +41,7 @@ Settings are stored in SQLite and edited from the Settings page. Playback prefer
 
 ## Architecture and adopted conventions
 
-The implementation follows the compatible parts of `Citr0sCo/home-app` and `Citr0sCo/citr0s-app`: Angular frontend with npm scripts, .NET 10 SDK/runtime containers, a multi-stage root Dockerfile, `/data` persistence and Actions jobs for frontend/backend checks plus Docker Hub publishing. The workflows use the newer checkout/cache/login action versions from `home-app`, use `npm ci` because the frontend is nested, and only publish after a merged pull request. The reference apps use broader backend examples and do not provide Twitch-specific OAuth/player policy, so this repository keeps a smaller Core/Infrastructure/API split required by the specification.
+The implementation follows the compatible parts of `Citr0sCo/home-app` and `Citr0sCo/citr0s-app`: Angular frontend with npm scripts, .NET 11 SDK/runtime containers, a multi-stage root Dockerfile, `/data` persistence and Actions jobs for frontend/backend checks plus Docker Hub publishing. The workflows use the newer checkout/cache/login action versions from `home-app`, use `npm ci` because the frontend is nested, and only publish after a merged pull request. The reference apps use broader backend examples and do not provide Twitch-specific OAuth/player policy, so this repository keeps a smaller Core/Infrastructure/API split required by the specification.
 
 ```text
 api/TwitchLoop.Api/            HTTP endpoints, cookie/OAuth gate, hosting
@@ -64,7 +64,7 @@ npm run lint
 npm run test-ci
 ```
 
-Backend (requires the .NET 10 SDK):
+Backend (requires the .NET 11 SDK):
 
 ```sh
 dotnet restore api/TwitchLoop.sln
