@@ -24,8 +24,10 @@
     "automergeStrategy": "squash",
     "commitMessagePrefix": "chore(deps): ",
     "commitBodyTable": true,
-    "dependencyDashboard": true,
-    "dependencyDashboardAutoclose": true,
+    "dependencyDashboard": {
+        "enabled": true,
+        "autoclose": true
+    },
     "configMigration": true,
     "platformCommit": "enabled",
     "lockFileMaintenance": {
